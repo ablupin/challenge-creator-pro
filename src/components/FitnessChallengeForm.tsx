@@ -48,6 +48,7 @@ export function FitnessChallengeForm({ onSubmit, onBack }: FitnessChallengeFormP
       workoutTheme: workoutTheme.trim(),
       exercisesPerWorkout,
       photos,
+      photoPreviews: photosPreviews,
     });
   };
 

@@ -48,6 +48,7 @@ export function FoodChallengeForm({ onSubmit, onBack }: FoodChallengeFormProps) 
       mealsPerDay,
       dietTheme: dietTheme.trim(),
       photos,
+      photoPreviews: photosPreviews,
     });
   };
 
