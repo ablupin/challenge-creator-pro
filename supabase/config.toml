@@ -1,0 +1,4 @@
+project_id = "pyclyrunkpgnjufzwfqt"
+
+[functions.generate-challenge]
+verify_jwt = false
