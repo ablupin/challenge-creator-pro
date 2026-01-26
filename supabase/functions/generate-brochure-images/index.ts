@@ -127,21 +127,21 @@ async function generateImage(
   }
 }
 
-// Varied hero scene prompts
+// Varied hero scene prompts - request 16:9 WIDE BANNER format
 const foodHeroPrompts = [
-  (theme: string) => `Transform this person into a professional lifestyle photo of them joyfully cooking a healthy ${theme} meal in a beautiful modern kitchen. Natural lighting, warm tones, magazine quality photography.`,
-  (theme: string) => `Create a professional photo of this person enjoying a healthy ${theme} meal at a beautifully styled dining table. Soft natural lighting, lifestyle magazine quality.`,
-  (theme: string) => `Professional photo of this person plating a beautiful ${theme} dish with care and precision. Kitchen background, natural lighting.`,
-  (theme: string) => `This person shopping for fresh ${theme} ingredients at a colorful farmers market. Candid, lifestyle photography.`,
-  (theme: string) => `This person holding a finished healthy ${theme} dish proudly, smiling at camera. Restaurant quality presentation.`,
+  (theme: string) => `Wide 16:9 banner image: Transform this person into a professional lifestyle photo of them joyfully cooking a healthy ${theme} meal in a beautiful modern kitchen. Natural lighting, warm tones, magazine quality photography. Horizontal wide shot.`,
+  (theme: string) => `Wide 16:9 banner image: Professional photo of this person enjoying a healthy ${theme} meal at a beautifully styled dining table. Soft natural lighting, lifestyle magazine quality. Horizontal wide shot.`,
+  (theme: string) => `Wide 16:9 banner image: Professional photo of this person plating a beautiful ${theme} dish with care and precision. Kitchen background, natural lighting. Horizontal wide shot.`,
+  (theme: string) => `Wide 16:9 banner image: This person shopping for fresh ${theme} ingredients at a colorful farmers market. Candid, lifestyle photography. Horizontal wide shot.`,
+  (theme: string) => `Wide 16:9 banner image: This person holding a finished healthy ${theme} dish proudly, smiling at camera. Restaurant quality presentation. Horizontal wide shot.`,
 ];
 
 const fitnessHeroPrompts = [
-  (theme: string) => `Transform this person into a professional fitness photo of them doing a ${theme} workout in a modern gym. Dynamic pose, motivational.`,
-  (theme: string) => `Create a professional photo of this person stretching or warming up for a ${theme} workout. Athletic wear, energetic.`,
-  (theme: string) => `This person in a powerful ${theme} exercise stance, focused and determined. Professional sports photography.`,
-  (theme: string) => `This person taking a water break during ${theme} training, looking strong and confident. Gym setting.`,
-  (theme: string) => `This person demonstrating perfect form in a ${theme} movement. Clean background, professional lighting.`,
+  (theme: string) => `Wide 16:9 banner image: Transform this person into a professional fitness photo of them doing a ${theme} workout in a modern gym. Dynamic pose, motivational. Horizontal wide shot.`,
+  (theme: string) => `Wide 16:9 banner image: Professional photo of this person stretching or warming up for a ${theme} workout. Athletic wear, energetic. Horizontal wide shot.`,
+  (theme: string) => `Wide 16:9 banner image: This person in a powerful ${theme} exercise stance, focused and determined. Professional sports photography. Horizontal wide shot.`,
+  (theme: string) => `Wide 16:9 banner image: This person taking a water break during ${theme} training, looking strong and confident. Gym setting. Horizontal wide shot.`,
+  (theme: string) => `Wide 16:9 banner image: This person demonstrating perfect form in a ${theme} movement. Clean background, professional lighting. Horizontal wide shot.`,
 ];
 
 serve(async (req) => {
@@ -210,42 +210,47 @@ serve(async (req) => {
       }
     }
 
-    // OPTIMIZATION: Generate only 1 image per day (for the first meal/exercise)
-    // This dramatically reduces generation time
+    // Generate UNIQUE image for EVERY meal using parallel batching
     if (type === 'food' && dayMeals) {
-      console.log(`Generating 1 food image per day for ${dayMeals.length} days...`);
+      const totalMeals = dayMeals.reduce((sum, day) => sum + day.length, 0);
+      console.log(`Generating unique food images for ${totalMeals} meals across ${dayMeals.length} days...`);
       
       for (let dayIndex = 0; dayIndex < dayMeals.length; dayIndex++) {
         const mealsForDay = dayMeals[dayIndex];
         const dayImageUrls: string[] = [];
         
-        // Generate image for FIRST meal only, then reuse for others
-        if (mealsForDay.length > 0) {
-          const meal = mealsForDay[0];
-          const prompt = `Beautiful professional food photography of ${meal.mealName} made with ${meal.ingredients.slice(0, 4).join(', ')}. Overhead shot, natural soft lighting, styled for Instagram, appetizing, restaurant quality presentation.`;
+        if (mealsForDay.length === 0) {
+          results.dayImages.push([]);
+          continue;
+        }
+        
+        // Generate all meals for this day in parallel (batch of up to 5)
+        const mealPromises = mealsForDay.map(async (meal, mealIndex) => {
+          // Request SQUARE 1:1 aspect ratio for food tiles
+          const prompt = `Square 1:1 format food photography: Beautiful professional overhead shot of ${meal.mealName} made with ${meal.ingredients.slice(0, 4).join(', ')}. Natural soft lighting, styled for Instagram, appetizing, restaurant quality presentation. Square aspect ratio.`;
           
           const imageData = await generateImage(prompt, LOVABLE_API_KEY);
           
           if (imageData) {
-            const url = await uploadImageToStorage(supabase, sessionId, `day-${dayIndex}-meal-0`, imageData);
-            // Push the same URL for all meals in this day
-            for (let i = 0; i < mealsForDay.length; i++) {
-              dayImageUrls.push(url || '');
-            }
-          } else {
-            for (let i = 0; i < mealsForDay.length; i++) {
-              dayImageUrls.push('');
-            }
+            const url = await uploadImageToStorage(supabase, sessionId, `day-${dayIndex}-meal-${mealIndex}`, imageData);
+            return url || '';
           }
-        }
+          return '';
+        });
+        
+        const mealResults = await Promise.all(mealPromises);
+        dayImageUrls.push(...mealResults);
         
         results.dayImages.push(dayImageUrls);
         
-        // Small delay
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Small delay between days to avoid rate limiting
+        if (dayIndex < dayMeals.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
       }
     } else if (type === 'fitness' && dayExercises) {
-      console.log(`Generating 1 exercise image per day for ${dayExercises.length} days...`);
+      const totalExercises = dayExercises.reduce((sum, day) => sum + Math.min(day.length, 4), 0);
+      console.log(`Generating unique exercise images for ${totalExercises} exercises across ${dayExercises.length} days...`);
       
       for (let dayIndex = 0; dayIndex < dayExercises.length; dayIndex++) {
         const exercisesForDay = dayExercises[dayIndex];
@@ -256,27 +261,30 @@ serve(async (req) => {
           continue;
         }
         
-        // Generate image for FIRST exercise only
-        const exercise = exercisesForDay[0];
-        const prompt = `Professional fitness photography showing the ${exercise.name} exercise. Clean gym background, proper form demonstration, motivational, high-quality sports photography.`;
-        
-        const imageData = await generateImage(prompt, LOVABLE_API_KEY);
-        
-        if (imageData) {
-          const url = await uploadImageToStorage(supabase, sessionId, `day-${dayIndex}-exercise-0`, imageData);
-          // Push the same URL for all exercises in this day
-          for (let i = 0; i < Math.min(exercisesForDay.length, 4); i++) {
-            dayImageUrls.push(url || '');
+        // Generate images for up to 4 exercises per day in parallel
+        const exercisesToGenerate = exercisesForDay.slice(0, 4);
+        const exercisePromises = exercisesToGenerate.map(async (exercise, exIndex) => {
+          // Request SQUARE 1:1 aspect ratio for exercise tiles
+          const prompt = `Square 1:1 format fitness photography: Professional photo showing the ${exercise.name} exercise. Clean gym background, proper form demonstration, motivational, high-quality sports photography. Square aspect ratio.`;
+          
+          const imageData = await generateImage(prompt, LOVABLE_API_KEY);
+          
+          if (imageData) {
+            const url = await uploadImageToStorage(supabase, sessionId, `day-${dayIndex}-exercise-${exIndex}`, imageData);
+            return url || '';
           }
-        } else {
-          for (let i = 0; i < Math.min(exercisesForDay.length, 4); i++) {
-            dayImageUrls.push('');
-          }
-        }
+          return '';
+        });
+        
+        const exerciseResults = await Promise.all(exercisePromises);
+        dayImageUrls.push(...exerciseResults);
         
         results.dayImages.push(dayImageUrls);
         
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Small delay between days
+        if (dayIndex < dayExercises.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 200));
+        }
       }
     }
 
