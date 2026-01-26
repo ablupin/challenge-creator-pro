@@ -4,7 +4,7 @@ import { BrochureImages } from '@/types/brochure';
 
 const initialState: BrochureImages = {
   heroImages: [],
-  contentImages: [],
+  dayImages: [],
   isGenerating: false,
   progress: {
     current: 0,
@@ -28,41 +28,30 @@ export function useBrochureImages() {
       ? (challenge as FoodChallenge).input.dietTheme
       : (challenge as FitnessChallenge).input.workoutTheme;
 
-    // Prepare request data
-    let meals: { mealName: string; ingredients: string[] }[] | undefined;
-    let exercises: { name: string }[] | undefined;
+    const numberOfDays = isFood
+      ? (challenge as FoodChallenge).input.numberOfDays
+      : (challenge as FitnessChallenge).input.numberOfDays;
+
+    // Prepare structured day-based data
+    let dayMeals: { mealName: string; ingredients: string[] }[][] | undefined;
+    let dayExercises: { name: string }[][] | undefined;
 
     if (isFood) {
       const plan = challenge.plan as FoodDay[];
-      // Get unique meals (first occurrence of each meal name)
-      const seenMeals = new Set<string>();
-      meals = [];
-      for (const day of plan) {
-        for (const meal of day.meals) {
-          if (!seenMeals.has(meal.name)) {
-            seenMeals.add(meal.name);
-            meals.push({ mealName: meal.name, ingredients: meal.ingredients });
-          }
-        }
-      }
+      dayMeals = plan.map(day => 
+        day.meals.map(meal => ({ mealName: meal.name, ingredients: meal.ingredients }))
+      );
     } else {
       const plan = challenge.plan as FitnessDay[];
-      // Get unique exercises
-      const seenExercises = new Set<string>();
-      exercises = [];
-      for (const day of plan) {
-        if (!day.isRestDay) {
-          for (const exercise of day.exercises) {
-            if (!seenExercises.has(exercise.name)) {
-              seenExercises.add(exercise.name);
-              exercises.push({ name: exercise.name });
-            }
-          }
-        }
-      }
+      dayExercises = plan.map(day => 
+        day.isRestDay ? [] : day.exercises.map(ex => ({ name: ex.name }))
+      );
     }
 
-    const totalImages = 2 + (meals?.length || exercises?.length || 0);
+    // Calculate total images to generate
+    const totalMeals = dayMeals?.reduce((sum, day) => sum + day.length, 0) || 0;
+    const totalExercises = dayExercises?.reduce((sum, day) => sum + Math.min(day.length, 4), 0) || 0;
+    const totalImages = numberOfDays + (totalMeals || totalExercises);
 
     setBrochureImages({
       ...initialState,
@@ -77,8 +66,9 @@ export function useBrochureImages() {
         body: JSON.stringify({
           type: challenge.type,
           influencerPhotos: photoPreviews,
-          meals,
-          exercises,
+          numberOfDays,
+          dayMeals,
+          dayExercises,
           theme
         })
       });
@@ -92,7 +82,7 @@ export function useBrochureImages() {
 
       const result: BrochureImages = {
         heroImages: data.heroImages || [],
-        contentImages: data.contentImages || [],
+        dayImages: data.dayImages || [],
         isGenerating: false,
         progress: { current: totalImages, total: totalImages, stage: 'complete' }
       };

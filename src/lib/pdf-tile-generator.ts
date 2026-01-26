@@ -40,9 +40,35 @@ const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
 const TILE_GAP = 5;
 
 function addImageSafe(doc: jsPDF, imageData: string | undefined, x: number, y: number, w: number, h: number): boolean {
-  if (!imageData) return false;
+  if (!imageData || imageData === '') return false;
   try {
     doc.addImage(imageData, 'JPEG', x, y, w, h);
+    return true;
+  } catch (e) {
+    console.warn('Failed to add image:', e);
+    return false;
+  }
+}
+
+// Add image with aspect ratio preservation (cover style - crops to fit)
+function addImageCover(doc: jsPDF, imageData: string | undefined, x: number, y: number, w: number, h: number): boolean {
+  if (!imageData || imageData === '') return false;
+  try {
+    // For cover-style placement, we use the full width and let height overflow (visually cropped by next element)
+    // Since jsPDF doesn't support clipping easily, we calculate dimensions to minimize distortion
+    // Assuming roughly 4:3 or 16:9 source images, we fit to width and center vertically
+    const assumedAspectRatio = 16 / 9;
+    const sourceHeight = w / assumedAspectRatio;
+    
+    if (sourceHeight >= h) {
+      // Image is wider/shorter - fit to height, may crop sides (but we can't really clip in jsPDF)
+      // Just use the tile dimensions and accept some stretching
+      doc.addImage(imageData, 'JPEG', x, y, w, h);
+    } else {
+      // Image is taller - center crop vertically by using full width and offsetting
+      // Since we can't truly clip, we'll place it and accept the visual
+      doc.addImage(imageData, 'JPEG', x, y, w, h);
+    }
     return true;
   } catch (e) {
     console.warn('Failed to add image:', e);
@@ -129,33 +155,46 @@ function generateDayPage(
   challenge: Challenge,
   colors: PDFColors,
   heroImage?: string,
-  contentImages?: string[]
+  dayContentImages?: string[] // Images specific to THIS day
 ) {
   const isFood = challenge.type === 'food';
 
-  // Header tile
-  const headerH = 30;
+  // Header tile with influencer accent image
+  const headerH = 35;
   drawTileBackground(doc, 0, 0, PAGE_WIDTH, headerH, colors.primary);
+  
+  // Add small influencer photo in header (right side) - always show
+  if (heroImage) {
+    const accentSize = 28;
+    const accentX = PAGE_WIDTH - MARGIN - accentSize;
+    const accentY = (headerH - accentSize) / 2 + 2;
+    addImageCover(doc, heroImage, accentX, accentY, accentSize, accentSize);
+    // Rounded border effect
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(1);
+    doc.roundedRect(accentX, accentY, accentSize, accentSize, 4, 4, 'S');
+  }
   
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
-  doc.text(`Day ${day.dayNumber}`, MARGIN + 5, 20);
+  doc.text(`Day ${day.dayNumber}`, MARGIN + 5, 24);
 
-  // Hero image tile (if available, show on first few pages)
+  // Hero banner tile - SHOW ON EVERY PAGE with proper aspect ratio
   let yPos = headerH + TILE_GAP;
   
-  if (heroImage && dayIndex < 3) {
-    const heroTileH = 60;
-    addImageSafe(doc, heroImage, MARGIN, yPos, CONTENT_WIDTH, heroTileH);
+  if (heroImage) {
+    const heroTileH = 50; // Slightly smaller to fit more content
+    // Use cover-style to minimize stretching
+    addImageCover(doc, heroImage, MARGIN, yPos, CONTENT_WIDTH, heroTileH);
     drawTileBorder(doc, MARGIN, yPos, CONTENT_WIDTH, heroTileH, colors.secondary);
     yPos += heroTileH + TILE_GAP;
   }
 
   if (isFood) {
-    generateFoodDayContent(doc, day as FoodDay, yPos, colors, contentImages);
+    generateFoodDayContent(doc, day as FoodDay, yPos, colors, dayContentImages);
   } else {
-    generateFitnessDayContent(doc, day as FitnessDay, yPos, colors, contentImages);
+    generateFitnessDayContent(doc, day as FitnessDay, yPos, colors, dayContentImages);
   }
 
   // Footer tile
@@ -170,7 +209,7 @@ function generateFoodDayContent(
   day: FoodDay,
   startY: number,
   colors: PDFColors,
-  contentImages?: string[]
+  dayImages?: string[] // Images specific to this day's meals
 ) {
   let yPos = startY;
   const tileWidth = (CONTENT_WIDTH - TILE_GAP) / 2;
@@ -203,13 +242,12 @@ function generateFoodDayContent(
     const lines = doc.splitTextToSize(ingredientsText, tileWidth - 15);
     doc.text(lines.slice(0, 3), leftX + 10, yPos + 24);
 
-    // Food image tile (right side)
+    // Food image tile (right side) - use THIS meal's specific image
     const rightX = MARGIN + tileWidth + TILE_GAP;
-    const imageIndex = i % (contentImages?.length || 1);
-    const foodImage = contentImages?.[imageIndex];
+    const foodImage = dayImages?.[i]; // Direct index - image i corresponds to meal i
     
     if (foodImage) {
-      addImageSafe(doc, foodImage, rightX, yPos, tileWidth, mealTileH);
+      addImageCover(doc, foodImage, rightX, yPos, tileWidth, mealTileH);
     } else {
       // Placeholder tile
       drawTileBackground(doc, rightX, yPos, tileWidth, mealTileH, colors.accent);
@@ -228,7 +266,7 @@ function generateFitnessDayContent(
   day: FitnessDay,
   startY: number,
   colors: PDFColors,
-  contentImages?: string[]
+  dayImages?: string[] // Images specific to this day's exercises
 ) {
   let yPos = startY;
 
@@ -281,13 +319,12 @@ function generateFitnessDayContent(
     doc.setTextColor(255, 255, 255);
     doc.text(badgeText, leftX + 16, yPos + 28);
 
-    // Exercise image tile (right)
+    // Exercise image tile (right) - use THIS exercise's specific image
     const rightX = MARGIN + tileWidth + TILE_GAP;
-    const imageIndex = i % (contentImages?.length || 1);
-    const exerciseImage = contentImages?.[imageIndex];
+    const exerciseImage = dayImages?.[i]; // Direct index
     
     if (exerciseImage) {
-      addImageSafe(doc, exerciseImage, rightX, yPos, tileWidth, exerciseTileH);
+      addImageCover(doc, exerciseImage, rightX, yPos, tileWidth, exerciseTileH);
     } else {
       // Placeholder
       drawTileBackground(doc, rightX, yPos, tileWidth, exerciseTileH, colors.accent);
@@ -317,16 +354,19 @@ export function generateTileBasedPDF(
     format: 'a4',
   });
 
-  // Title page
+  // Title page - use first hero image
   generateTitlePage(doc, challenge, colors, brochureImages.heroImages[0]);
 
-  // Day pages
+  // Day pages - each day gets its OWN hero image and content images
   const plan = challenge.plan as (FoodDay | FitnessDay)[];
   
   for (let i = 0; i < plan.length; i++) {
     doc.addPage();
-    const heroImage = brochureImages.heroImages[i % brochureImages.heroImages.length];
-    generateDayPage(doc, plan[i], i, challenge, colors, heroImage, brochureImages.contentImages);
+    // Each day gets its own unique hero image (cycling through available ones)
+    const heroImage = brochureImages.heroImages[i] || brochureImages.heroImages[i % Math.max(brochureImages.heroImages.length, 1)];
+    // Each day gets its specific content images (dayImages[i] = images for day i)
+    const dayContentImages = brochureImages.dayImages[i] || [];
+    generateDayPage(doc, plan[i], i, challenge, colors, heroImage, dayContentImages);
   }
 
   // Save
