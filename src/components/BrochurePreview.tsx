@@ -17,27 +17,41 @@ interface BrochurePreviewProps {
 
 export function BrochurePreview({ challenge, onExport, onStartNew }: BrochurePreviewProps) {
   const [isDownloading, setIsDownloading] = useState(false);
-  const { brochureImages, generateImages } = useBrochureImages();
+  const { brochureImages, generateBrochureImages } = useBrochureImages();
   
   const isFood = challenge.type === 'food';
   const Icon = isFood ? Utensils : Dumbbell;
   const gradient = isFood ? 'bg-gradient-food' : 'bg-gradient-fitness';
   const title = isFood ? 'Food Challenge' : 'Fitness Challenge';
 
+  // Get influencer photos from challenge input (stored as photoPreviews - base64 strings)
+  const influencerPhotos = isFood
+    ? (challenge as FoodChallenge).input.photoPreviews || []
+    : (challenge as FitnessChallenge).input.photoPreviews || [];
+
   const handleGenerateAndDownloadPDF = async () => {
     setIsDownloading(true);
     
     try {
       toast.info('Generating AI images for your brochure...', {
-        description: 'This may take 30-60 seconds',
-        duration: 5000
+        description: 'This may take 1-2 minutes',
+        duration: 8000
       });
 
-      const images = await generateImages(challenge);
+      const images = await generateBrochureImages(challenge, influencerPhotos);
       
-      toast.success('Images generated! Creating PDF...');
+      const validHeroCount = images.heroImages.filter(u => u).length;
+      const validDayCount = images.dayImages.reduce((sum, day) => sum + day.filter(u => u).length, 0);
       
-      generateTileBasedPDF(challenge, images);
+      if (validHeroCount === 0 && validDayCount === 0) {
+        toast.warning('Could not generate images. Creating basic PDF...');
+      } else {
+        toast.success(`Generated ${validHeroCount} hero images and ${validDayCount} content images!`);
+      }
+      
+      toast.info('Creating your PDF...', { duration: 3000 });
+      
+      await generateTileBasedPDF(challenge, images);
       
       toast.success('PDF downloaded successfully!');
     } catch (error) {
@@ -47,7 +61,7 @@ export function BrochurePreview({ challenge, onExport, onStartNew }: BrochurePre
       });
       
       // Fallback to basic PDF without AI images
-      generateTileBasedPDF(challenge, {
+      await generateTileBasedPDF(challenge, {
         heroImages: [],
         dayImages: [],
         isGenerating: false,

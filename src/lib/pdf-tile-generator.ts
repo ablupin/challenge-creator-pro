@@ -1,6 +1,7 @@
 import { jsPDF } from 'jspdf';
 import { Challenge, FoodDay, FitnessDay, FoodChallenge, FitnessChallenge } from '@/types/challenge';
 import { BrochureImages } from '@/types/brochure';
+import { prefetchAllImages } from './image-utils';
 
 interface PDFColors {
   primary: [number, number, number];
@@ -338,15 +339,22 @@ function generateFitnessDayContent(
   }
 }
 
-export function generateTileBasedPDF(
+export async function generateTileBasedPDF(
   challenge: Challenge,
   brochureImages: BrochureImages
-): void {
+): Promise<void> {
   const isFood = challenge.type === 'food';
   const colors = isFood ? FOOD_COLORS : FITNESS_COLORS;
   const numberOfDays = isFood
     ? (challenge as FoodChallenge).input.numberOfDays
     : (challenge as FitnessChallenge).input.numberOfDays;
+
+  // Pre-fetch all images and convert URLs to base64 for PDF embedding
+  console.log('Fetching images for PDF generation...');
+  const fetchedImages = await prefetchAllImages(
+    brochureImages.heroImages,
+    brochureImages.dayImages
+  );
 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -355,7 +363,7 @@ export function generateTileBasedPDF(
   });
 
   // Title page - use first hero image
-  generateTitlePage(doc, challenge, colors, brochureImages.heroImages[0]);
+  generateTitlePage(doc, challenge, colors, fetchedImages.heroImages[0]);
 
   // Day pages - each day gets its OWN hero image and content images
   const plan = challenge.plan as (FoodDay | FitnessDay)[];
@@ -363,9 +371,9 @@ export function generateTileBasedPDF(
   for (let i = 0; i < plan.length; i++) {
     doc.addPage();
     // Each day gets its own unique hero image (cycling through available ones)
-    const heroImage = brochureImages.heroImages[i] || brochureImages.heroImages[i % Math.max(brochureImages.heroImages.length, 1)];
+    const heroImage = fetchedImages.heroImages[i] || fetchedImages.heroImages[i % Math.max(fetchedImages.heroImages.length, 1)];
     // Each day gets its specific content images (dayImages[i] = images for day i)
-    const dayContentImages = brochureImages.dayImages[i] || [];
+    const dayContentImages = fetchedImages.dayImages[i] || [];
     generateDayPage(doc, plan[i], i, challenge, colors, heroImage, dayContentImages);
   }
 

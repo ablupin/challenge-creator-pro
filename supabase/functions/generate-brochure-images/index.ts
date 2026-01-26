@@ -1,4 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,11 +17,61 @@ interface ExerciseForDay {
 
 interface ImageGenerationRequest {
   type: 'food' | 'fitness';
-  influencerPhotos: string[]; // base64 data URLs
+  influencerPhotos: string[];
   numberOfDays: number;
-  dayMeals?: MealForDay[][]; // dayMeals[dayIndex] = array of meals for that day
-  dayExercises?: ExerciseForDay[][]; // dayExercises[dayIndex] = array of exercises
+  dayMeals?: MealForDay[][];
+  dayExercises?: ExerciseForDay[][];
   theme: string;
+  sessionId: string;
+}
+
+function getSupabaseClient() {
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  return createClient(supabaseUrl, supabaseServiceKey);
+}
+
+function base64ToBlob(base64DataUrl: string): Uint8Array {
+  const base64 = base64DataUrl.split(',')[1];
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes;
+}
+
+async function uploadImageToStorage(
+  supabase: ReturnType<typeof getSupabaseClient>,
+  sessionId: string,
+  imageName: string,
+  imageData: string
+): Promise<string | null> {
+  try {
+    const bytes = base64ToBlob(imageData);
+    const filePath = `${sessionId}/${imageName}.jpg`;
+    
+    const { error } = await supabase.storage
+      .from('brochure-images')
+      .upload(filePath, bytes, {
+        contentType: 'image/jpeg',
+        upsert: true
+      });
+
+    if (error) {
+      console.error("Upload error:", error);
+      return null;
+    }
+
+    const { data: urlData } = supabase.storage
+      .from('brochure-images')
+      .getPublicUrl(filePath);
+
+    return urlData.publicUrl;
+  } catch (e) {
+    console.error("Upload exception:", e);
+    return null;
+  }
 }
 
 async function generateImage(
@@ -39,6 +90,9 @@ async function generateImage(
         : prompt
     }];
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000); // 45s timeout per image
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -50,10 +104,13 @@ async function generateImage(
         messages,
         modalities: ["image", "text"]
       }),
+      signal: controller.signal
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      console.error("Image generation failed:", response.status, await response.text());
+      console.error("Image generation failed:", response.status);
       return null;
     }
 
@@ -61,20 +118,22 @@ async function generateImage(
     const imageUrl = data.choices?.[0]?.message?.images?.[0]?.image_url?.url;
     return imageUrl || null;
   } catch (error) {
-    console.error("Image generation error:", error);
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.error("Image generation timed out");
+    } else {
+      console.error("Image generation error:", error);
+    }
     return null;
   }
 }
 
-// Varied hero scene prompts to use across all days
+// Varied hero scene prompts
 const foodHeroPrompts = [
   (theme: string) => `Transform this person into a professional lifestyle photo of them joyfully cooking a healthy ${theme} meal in a beautiful modern kitchen. Natural lighting, warm tones, magazine quality photography.`,
   (theme: string) => `Create a professional photo of this person enjoying a healthy ${theme} meal at a beautifully styled dining table. Soft natural lighting, lifestyle magazine quality.`,
   (theme: string) => `Professional photo of this person plating a beautiful ${theme} dish with care and precision. Kitchen background, natural lighting.`,
   (theme: string) => `This person shopping for fresh ${theme} ingredients at a colorful farmers market. Candid, lifestyle photography.`,
-  (theme: string) => `This person preparing fresh ingredients on a cutting board, ${theme} cooking scene. Bright kitchen, warm atmosphere.`,
   (theme: string) => `This person holding a finished healthy ${theme} dish proudly, smiling at camera. Restaurant quality presentation.`,
-  (theme: string) => `This person tasting a delicious ${theme} meal with eyes closed in enjoyment. Natural home setting.`,
 ];
 
 const fitnessHeroPrompts = [
@@ -83,8 +142,6 @@ const fitnessHeroPrompts = [
   (theme: string) => `This person in a powerful ${theme} exercise stance, focused and determined. Professional sports photography.`,
   (theme: string) => `This person taking a water break during ${theme} training, looking strong and confident. Gym setting.`,
   (theme: string) => `This person demonstrating perfect form in a ${theme} movement. Clean background, professional lighting.`,
-  (theme: string) => `This person cooling down after an intense ${theme} session, satisfied expression. Athletic setting.`,
-  (theme: string) => `This person in athletic wear ready to start ${theme} workout, motivational pose. High energy.`,
 ];
 
 serve(async (req) => {
@@ -98,8 +155,9 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY is not configured");
     }
 
+    const supabase = getSupabaseClient();
     const body: ImageGenerationRequest = await req.json();
-    const { type, influencerPhotos, numberOfDays, dayMeals, dayExercises, theme } = body;
+    const { type, influencerPhotos, numberOfDays, dayMeals, dayExercises, theme, sessionId } = body;
 
     const results: {
       heroImages: string[];
@@ -111,102 +169,120 @@ serve(async (req) => {
 
     const heroPrompts = type === 'food' ? foodHeroPrompts : fitnessHeroPrompts;
 
-    // Generate ONE hero image per day for variety
+    // OPTIMIZATION: Generate hero images only for every other day (max 4)
+    // This cuts generation time significantly
+    const heroIndicesToGenerate = [];
+    for (let i = 0; i < numberOfDays && heroIndicesToGenerate.length < 4; i += Math.max(1, Math.floor(numberOfDays / 4))) {
+      heroIndicesToGenerate.push(i);
+    }
+    
+    console.log(`Generating ${heroIndicesToGenerate.length} hero images for ${numberOfDays} days...`);
+
     if (influencerPhotos.length > 0) {
-      console.log(`Generating ${numberOfDays} hero images...`);
-      
-      const batchSize = 2;
-      for (let dayIndex = 0; dayIndex < numberOfDays; dayIndex += batchSize) {
-        const batch: Promise<string | null>[] = [];
+      for (let i = 0; i < heroIndicesToGenerate.length; i++) {
+        const dayIndex = heroIndicesToGenerate[i];
+        const promptIndex = i % heroPrompts.length;
+        const photoIndex = i % influencerPhotos.length;
+        const prompt = heroPrompts[promptIndex](theme);
         
-        for (let i = dayIndex; i < Math.min(dayIndex + batchSize, numberOfDays); i++) {
-          const promptIndex = i % heroPrompts.length;
-          const photoIndex = i % influencerPhotos.length;
-          const prompt = heroPrompts[promptIndex](theme);
-          batch.push(generateImage(prompt, LOVABLE_API_KEY, influencerPhotos[photoIndex]));
+        const imageData = await generateImage(prompt, LOVABLE_API_KEY, influencerPhotos[photoIndex]);
+        
+        if (imageData) {
+          const url = await uploadImageToStorage(supabase, sessionId, `hero-${i}`, imageData);
+          results.heroImages.push(url || '');
+        } else {
+          results.heroImages.push('');
         }
         
-        const batchResults = await Promise.all(batch);
-        results.heroImages.push(...batchResults.map(img => img || ''));
-        
-        if (dayIndex + batchSize < numberOfDays) {
-          await new Promise(resolve => setTimeout(resolve, 300));
-        }
+        // Small delay to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
 
-    // Generate content images PER DAY (food photos or exercise illustrations)
+    // Backfill hero images for all days by cycling through generated ones
+    const generatedHeroes = results.heroImages.filter(u => u);
+    results.heroImages = [];
+    for (let i = 0; i < numberOfDays; i++) {
+      if (generatedHeroes.length > 0) {
+        results.heroImages.push(generatedHeroes[i % generatedHeroes.length]);
+      } else {
+        results.heroImages.push('');
+      }
+    }
+
+    // OPTIMIZATION: Generate only 1 image per day (for the first meal/exercise)
+    // This dramatically reduces generation time
     if (type === 'food' && dayMeals) {
-      console.log(`Generating food images for ${dayMeals.length} days...`);
+      console.log(`Generating 1 food image per day for ${dayMeals.length} days...`);
       
       for (let dayIndex = 0; dayIndex < dayMeals.length; dayIndex++) {
         const mealsForDay = dayMeals[dayIndex];
-        const dayImageResults: string[] = [];
+        const dayImageUrls: string[] = [];
         
-        // Generate images for each meal in this day (batch of 2-3)
-        const batchSize = 2;
-        for (let mealIndex = 0; mealIndex < mealsForDay.length; mealIndex += batchSize) {
-          const batch = mealsForDay.slice(mealIndex, mealIndex + batchSize).map((meal) => {
-            const prompt = `Beautiful professional food photography of ${meal.mealName} made with ${meal.ingredients.slice(0, 4).join(', ')}. Overhead shot, natural soft lighting, styled for Instagram, appetizing, restaurant quality presentation on a stylish plate.`;
-            return generateImage(prompt, LOVABLE_API_KEY);
-          });
+        // Generate image for FIRST meal only, then reuse for others
+        if (mealsForDay.length > 0) {
+          const meal = mealsForDay[0];
+          const prompt = `Beautiful professional food photography of ${meal.mealName} made with ${meal.ingredients.slice(0, 4).join(', ')}. Overhead shot, natural soft lighting, styled for Instagram, appetizing, restaurant quality presentation.`;
           
-          const batchResults = await Promise.all(batch);
-          dayImageResults.push(...batchResults.map(img => img || ''));
+          const imageData = await generateImage(prompt, LOVABLE_API_KEY);
           
-          // Small delay between batches
-          if (mealIndex + batchSize < mealsForDay.length) {
-            await new Promise(resolve => setTimeout(resolve, 200));
+          if (imageData) {
+            const url = await uploadImageToStorage(supabase, sessionId, `day-${dayIndex}-meal-0`, imageData);
+            // Push the same URL for all meals in this day
+            for (let i = 0; i < mealsForDay.length; i++) {
+              dayImageUrls.push(url || '');
+            }
+          } else {
+            for (let i = 0; i < mealsForDay.length; i++) {
+              dayImageUrls.push('');
+            }
           }
         }
         
-        results.dayImages.push(dayImageResults);
+        results.dayImages.push(dayImageUrls);
         
-        // Delay between days
-        if (dayIndex < dayMeals.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 300));
-        }
+        // Small delay
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     } else if (type === 'fitness' && dayExercises) {
-      console.log(`Generating exercise images for ${dayExercises.length} days...`);
+      console.log(`Generating 1 exercise image per day for ${dayExercises.length} days...`);
       
       for (let dayIndex = 0; dayIndex < dayExercises.length; dayIndex++) {
         const exercisesForDay = dayExercises[dayIndex];
-        const dayImageResults: string[] = [];
+        const dayImageUrls: string[] = [];
         
-        // For rest days or empty, push empty array
         if (exercisesForDay.length === 0) {
           results.dayImages.push([]);
           continue;
         }
         
-        // Generate images for first 3-4 exercises per day to manage load
-        const exercisesToGenerate = exercisesForDay.slice(0, 4);
-        const batchSize = 2;
+        // Generate image for FIRST exercise only
+        const exercise = exercisesForDay[0];
+        const prompt = `Professional fitness photography showing the ${exercise.name} exercise. Clean gym background, proper form demonstration, motivational, high-quality sports photography.`;
         
-        for (let exIndex = 0; exIndex < exercisesToGenerate.length; exIndex += batchSize) {
-          const batch = exercisesToGenerate.slice(exIndex, exIndex + batchSize).map((exercise) => {
-            const prompt = `Professional fitness photography showing the ${exercise.name} exercise. Clean gym background, proper form demonstration, motivational, high-quality sports photography.`;
-            return generateImage(prompt, LOVABLE_API_KEY);
-          });
-          
-          const batchResults = await Promise.all(batch);
-          dayImageResults.push(...batchResults.map(img => img || ''));
-          
-          if (exIndex + batchSize < exercisesToGenerate.length) {
-            await new Promise(resolve => setTimeout(resolve, 200));
+        const imageData = await generateImage(prompt, LOVABLE_API_KEY);
+        
+        if (imageData) {
+          const url = await uploadImageToStorage(supabase, sessionId, `day-${dayIndex}-exercise-0`, imageData);
+          // Push the same URL for all exercises in this day
+          for (let i = 0; i < Math.min(exercisesForDay.length, 4); i++) {
+            dayImageUrls.push(url || '');
+          }
+        } else {
+          for (let i = 0; i < Math.min(exercisesForDay.length, 4); i++) {
+            dayImageUrls.push('');
           }
         }
         
-        results.dayImages.push(dayImageResults);
+        results.dayImages.push(dayImageUrls);
         
-        if (dayIndex < dayExercises.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 300));
-        }
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
 
-    console.log(`Generated ${results.heroImages.length} hero images, ${results.dayImages.length} days of content images`);
+    const validHeroes = results.heroImages.filter(u => u).length;
+    const validContent = results.dayImages.reduce((sum, d) => sum + (d.length > 0 && d[0] ? 1 : 0), 0);
+    console.log(`Generated ${validHeroes} hero images, ${validContent} days with content images`);
 
     return new Response(JSON.stringify(results), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -215,15 +291,13 @@ serve(async (req) => {
   } catch (error) {
     console.error("Error in generate-brochure-images:", error);
     
-    const status = error instanceof Error && error.message.includes("Rate limit") ? 429 : 500;
-    
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : "Unknown error",
         heroImages: [],
         dayImages: []
       }),
-      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
