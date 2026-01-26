@@ -132,21 +132,43 @@ Include 1-2 rest days per week for recovery. Use appropriate sets (2-5) and reps
       }
     }
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.7,
-      }),
-    });
+    console.log("Calling AI gateway with prompt length:", userPrompt.length);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 55000); // 55s timeout
+
+    let response: Response;
+    try {
+      response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "google/gemini-3-flash-preview",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          temperature: 0.7,
+        }),
+        signal: controller.signal,
+      });
+    } catch (fetchError) {
+      clearTimeout(timeoutId);
+      console.error("Fetch error:", fetchError);
+      if (fetchError instanceof Error && fetchError.name === "AbortError") {
+        return new Response(JSON.stringify({ error: "Request timed out. Please try again." }), {
+          status: 504,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw fetchError;
+    }
+    clearTimeout(timeoutId);
+
+    console.log("AI gateway response status:", response.status);
 
     if (!response.ok) {
       if (response.status === 429) {
