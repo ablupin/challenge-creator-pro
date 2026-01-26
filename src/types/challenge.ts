@@ -29,6 +29,7 @@ export interface FoodChallengeInput {
   mealsPerDay: number;
   dietTheme: string;
   photos: File[];
+  photoPreviews: string[];
 }
 
 export interface FitnessChallengeInput {
@@ -36,6 +37,7 @@ export interface FitnessChallengeInput {
   workoutTheme: string;
   exercisesPerWorkout: number;
   photos: File[];
+  photoPreviews: string[];
 }
 
 export interface FoodChallenge {
