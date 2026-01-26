@@ -51,30 +51,73 @@ function addImageSafe(doc: jsPDF, imageData: string | undefined, x: number, y: n
   }
 }
 
-// Add image with aspect ratio preservation (cover style - crops to fit)
-function addImageCover(doc: jsPDF, imageData: string | undefined, x: number, y: number, w: number, h: number): boolean {
+// Add hero/banner image with 16:9 aspect ratio preservation (for influencer photos)
+function addHeroBanner(doc: jsPDF, imageData: string | undefined, x: number, y: number, w: number, h: number): boolean {
   if (!imageData || imageData === '') return false;
   try {
-    // For cover-style placement, we use the full width and let height overflow (visually cropped by next element)
-    // Since jsPDF doesn't support clipping easily, we calculate dimensions to minimize distortion
-    // Assuming roughly 4:3 or 16:9 source images, we fit to width and center vertically
-    const assumedAspectRatio = 16 / 9;
-    const sourceHeight = w / assumedAspectRatio;
+    // AI generates 16:9 aspect ratio images for banners
+    // Fit to container while maintaining aspect ratio
+    const sourceAspect = 16 / 9;
+    const targetAspect = w / h;
     
-    if (sourceHeight >= h) {
-      // Image is wider/shorter - fit to height, may crop sides (but we can't really clip in jsPDF)
-      // Just use the tile dimensions and accept some stretching
-      doc.addImage(imageData, 'JPEG', x, y, w, h);
+    let drawW = w;
+    let drawH = h;
+    let drawX = x;
+    let drawY = y;
+    
+    if (sourceAspect > targetAspect) {
+      // Source is wider - fit to width, center vertically
+      drawH = w / sourceAspect;
+      drawY = y + (h - drawH) / 2;
     } else {
-      // Image is taller - center crop vertically by using full width and offsetting
-      // Since we can't truly clip, we'll place it and accept the visual
-      doc.addImage(imageData, 'JPEG', x, y, w, h);
+      // Source is taller - fit to height, center horizontally
+      drawW = h * sourceAspect;
+      drawX = x + (w - drawW) / 2;
     }
+    
+    doc.addImage(imageData, 'JPEG', drawX, drawY, drawW, drawH);
     return true;
   } catch (e) {
-    console.warn('Failed to add image:', e);
+    console.warn('Failed to add hero banner:', e);
     return false;
   }
+}
+
+// Add content tile image with 1:1 (square) aspect ratio preservation (for food/exercise photos)
+function addContentTile(doc: jsPDF, imageData: string | undefined, x: number, y: number, w: number, h: number): boolean {
+  if (!imageData || imageData === '') return false;
+  try {
+    // AI generates 1:1 square images for content tiles
+    // Fit to container while maintaining aspect ratio
+    const sourceAspect = 1;
+    const targetAspect = w / h;
+    
+    let drawW = w;
+    let drawH = h;
+    let drawX = x;
+    let drawY = y;
+    
+    if (sourceAspect > targetAspect) {
+      // Source is wider - fit to width, center vertically
+      drawH = w / sourceAspect;
+      drawY = y + (h - drawH) / 2;
+    } else {
+      // Source is taller - fit to height, center horizontally
+      drawW = h * sourceAspect;
+      drawX = x + (w - drawW) / 2;
+    }
+    
+    doc.addImage(imageData, 'JPEG', drawX, drawY, drawW, drawH);
+    return true;
+  } catch (e) {
+    console.warn('Failed to add content tile:', e);
+    return false;
+  }
+}
+
+// Legacy function for backward compatibility
+function addImageCover(doc: jsPDF, imageData: string | undefined, x: number, y: number, w: number, h: number): boolean {
+  return addContentTile(doc, imageData, x, y, w, h);
 }
 
 function drawTileBackground(doc: jsPDF, x: number, y: number, w: number, h: number, color: [number, number, number], radius = 4) {
@@ -169,7 +212,8 @@ function generateDayPage(
     const accentSize = 28;
     const accentX = PAGE_WIDTH - MARGIN - accentSize;
     const accentY = (headerH - accentSize) / 2 + 2;
-    addImageCover(doc, heroImage, accentX, accentY, accentSize, accentSize);
+    // Use hero banner function for proper 16:9 aspect ratio
+    addHeroBanner(doc, heroImage, accentX, accentY, accentSize, accentSize);
     // Rounded border effect
     doc.setDrawColor(255, 255, 255);
     doc.setLineWidth(1);
@@ -186,8 +230,8 @@ function generateDayPage(
   
   if (heroImage) {
     const heroTileH = 50; // Slightly smaller to fit more content
-    // Use cover-style to minimize stretching
-    addImageCover(doc, heroImage, MARGIN, yPos, CONTENT_WIDTH, heroTileH);
+    // Use hero banner function for proper 16:9 aspect ratio
+    addHeroBanner(doc, heroImage, MARGIN, yPos, CONTENT_WIDTH, heroTileH);
     drawTileBorder(doc, MARGIN, yPos, CONTENT_WIDTH, heroTileH, colors.secondary);
     yPos += heroTileH + TILE_GAP;
   }
@@ -248,7 +292,7 @@ function generateFoodDayContent(
     const foodImage = dayImages?.[i]; // Direct index - image i corresponds to meal i
     
     if (foodImage) {
-      addImageCover(doc, foodImage, rightX, yPos, tileWidth, mealTileH);
+      addContentTile(doc, foodImage, rightX, yPos, tileWidth, mealTileH);
     } else {
       // Placeholder tile
       drawTileBackground(doc, rightX, yPos, tileWidth, mealTileH, colors.accent);
@@ -325,7 +369,7 @@ function generateFitnessDayContent(
     const exerciseImage = dayImages?.[i]; // Direct index
     
     if (exerciseImage) {
-      addImageCover(doc, exerciseImage, rightX, yPos, tileWidth, exerciseTileH);
+      addContentTile(doc, exerciseImage, rightX, yPos, tileWidth, exerciseTileH);
     } else {
       // Placeholder
       drawTileBackground(doc, rightX, yPos, tileWidth, exerciseTileH, colors.accent);
