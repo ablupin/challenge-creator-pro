@@ -1,6 +1,6 @@
 export interface BrochureImages {
-  heroImages: string[];
-  contentImages: string[];
+  heroImages: string[]; // One per day for variety
+  dayImages: string[][]; // dayImages[dayIndex][mealIndex] = image URL
   isGenerating: boolean;
   progress: {
     current: number;

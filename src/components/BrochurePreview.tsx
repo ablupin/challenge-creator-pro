@@ -49,7 +49,7 @@ export function BrochurePreview({ challenge, onExport, onStartNew }: BrochurePre
       // Fallback to basic PDF without AI images
       generateTileBasedPDF(challenge, {
         heroImages: [],
-        contentImages: [],
+        dayImages: [],
         isGenerating: false,
         progress: { current: 0, total: 0, stage: 'idle' }
       });
