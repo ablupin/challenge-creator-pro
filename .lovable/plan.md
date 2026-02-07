@@ -1,120 +1,101 @@
 
 
-## Add Brochure Formatting Customization
+## Fix: Connect Regenerate Day and Regenerate Meal Buttons to the API
 
-Give users a visual settings panel on the Brochure Preview screen to tweak the PDF layout, colors, typography, and branding before downloading.
+### Problem
 
----
+The "Regenerate Day" and "Regenerate Meal" buttons currently display a toast notification but never call the backend. The Edge Function already supports single-day and single-meal regeneration -- the frontend just needs to be wired up.
 
-### What You'll Be Able to Customize
+### Solution
 
-**Colors**
-- Primary color (headers, accent bars, badges) -- color picker
-- Secondary color (backgrounds, borders)
-- Card background color
-- Text color (dark/light)
-
-**Layout**
-- Page format: A4 or US Letter
-- Margins: Small / Medium / Large
-- Image-to-text ratio: controls how wide the food/exercise image tile is vs. the text tile (e.g., 40/60, 50/50, 60/40)
-- Hero banner height: Small / Medium / Large / Hidden
-
-**Typography**
-- Title font size (cover page)
-- Day header font size
-- Body text font size
-
-**Branding**
-- Custom title text (replaces "Food Challenge" / "Fitness Challenge")
-- Tagline text (replaces "Your transformation starts here")
-- Show/hide disclaimer footer
+Add two new handler functions in `Index.tsx` that call the `generate-challenge` Edge Function with the correct `regenerateType` parameter, then splice the AI-generated result back into the existing plan.
 
 ---
 
-### How It Works in the UI
+### Changes
 
-A collapsible "Customize Design" panel appears on the Brochure Preview page, between the page previews and the download buttons. It uses accordions to group settings by category (Colors, Layout, Typography, Branding). Changes update the preview card thumbnails in real-time where possible, and are passed directly into the PDF generator on download.
+**File: `src/pages/Index.tsx`**
+
+1. Add a `regenerateMeal` async handler:
+   - Calls the Edge Function with `{ type: 'food', regenerateType: 'meal', dietTheme, mealsPerDay }`
+   - Receives a single `{ meal: { name, ingredients } }` response
+   - Replaces the specific meal at `plan[dayIndex].meals[mealIndex]` with the new meal
+   - Shows a success toast on completion and an error toast on failure
+   - Wrapped in try/catch for proper error handling
+
+2. Add a `regenerateDay` async handler for food challenges:
+   - Calls the Edge Function with `{ type: 'food', regenerateType: 'day', dietTheme, mealsPerDay }`
+   - Receives `{ meals: [...] }` response
+   - Replaces all meals at `plan[dayIndex]` with the new meals
+   - Shows a success toast on completion
+
+3. Add a `regenerateFitnessDay` async handler for fitness challenges:
+   - Calls the Edge Function with `{ type: 'fitness', regenerateType: 'day', workoutTheme, exercisesPerWorkout }`
+   - Receives `{ exercises: [...] }` response
+   - Replaces all exercises at `plan[dayIndex]` with the new exercises
+   - Shows a success toast on completion
+
+4. Replace the placeholder toast-only callbacks with the real handlers:
+   - `onRegenerateMeal={(dayIndex, mealIndex) => regenerateMeal(dayIndex, mealIndex)}`
+   - `onRegenerateDay={(dayIndex) => regenerateDay(dayIndex)}` (for food)
+   - `onRegenerateDay={(dayIndex) => regenerateFitnessDay(dayIndex)}` (for fitness)
+
+5. Use the existing `isGenerating` state to disable buttons during regeneration and show the spinner animation.
 
 ---
 
 ### Technical Details
 
-#### 1. New type: `BrochureFormatConfig` (`src/types/brochure.ts`)
+Handler pattern (example for single meal):
 
 ```typescript
-export interface BrochureFormatConfig {
-  colors: {
-    primary: [number, number, number];
-    secondary: [number, number, number];
-    accent: [number, number, number];
-    cardBg: [number, number, number];
-    text: [number, number, number];
-  };
-  layout: {
-    pageFormat: 'a4' | 'letter';
-    margin: 'small' | 'medium' | 'large';   // 6mm, 10mm, 16mm
-    imageRatio: number;                       // 0.3 to 0.7 (fraction of row for image)
-    heroBannerHeight: 'hidden' | 'small' | 'medium' | 'large';
-  };
-  typography: {
-    titleSize: number;    // 32-56
-    headerSize: number;   // 16-28
-    bodySize: number;     // 8-14
-  };
-  branding: {
-    customTitle: string;
-    tagline: string;
-    showDisclaimer: boolean;
-  };
-}
+const regenerateMeal = useCallback(async (dayIndex: number, mealIndex: number) => {
+  if (!challenge || challenge.type !== 'food') return;
+  setIsGenerating(true);
+  try {
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-challenge`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'food',
+          regenerateType: 'meal',
+          dietTheme: challenge.input.dietTheme,
+          mealsPerDay: challenge.input.mealsPerDay,
+          numberOfDays: challenge.input.numberOfDays,
+        }),
+      }
+    );
+    if (!response.ok) throw new Error('Failed to regenerate meal');
+    const data = await response.json();
+    const newPlan = [...challenge.plan];
+    newPlan[dayIndex] = {
+      ...newPlan[dayIndex],
+      meals: newPlan[dayIndex].meals.map((m, i) =>
+        i === mealIndex
+          ? { id: m.id, name: data.meal.name, ingredients: data.meal.ingredients }
+          : m
+      ),
+    };
+    setChallenge({ ...challenge, plan: newPlan });
+    toast.success('Meal regenerated!');
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : 'Failed to regenerate');
+  } finally {
+    setIsGenerating(false);
+  }
+}, [challenge]);
 ```
 
-A `DEFAULT_FORMAT_CONFIG` constant provides sensible defaults matching the current hard-coded values.
+The same pattern applies for `regenerateDay` (food) and `regenerateFitnessDay`, just with different `regenerateType` values and response parsing.
 
-#### 2. New component: `BrochureFormatPanel` (`src/components/BrochureFormatPanel.tsx`)
+---
 
-- Collapsible card with accordion sections for each category
-- **Colors**: Uses native `<input type="color">` pickers that convert hex to RGB tuples
-- **Layout**: Radio groups and a slider for image ratio
-- **Typography**: Sliders with numeric labels for font sizes
-- **Branding**: Text inputs for title and tagline, a switch for disclaimer
-- Emits an `onChange(config: BrochureFormatConfig)` callback on every change
-
-#### 3. Update `BrochurePreview` component
-
-- Adds `useState<BrochureFormatConfig>` initialized with defaults
-- Renders `<BrochureFormatPanel>` between the page grid and the export card
-- Passes `formatConfig` into `generateTileBasedPDF(challenge, images, formatConfig)`
-- The preview card thumbnails update their gradient colors to match the selected primary color
-
-#### 4. Update `generateTileBasedPDF` (`src/lib/pdf-tile-generator.ts`)
-
-- Accept `formatConfig?: BrochureFormatConfig` as a third parameter (falls back to current defaults)
-- Replace all hard-coded constants with config-driven values:
-
-```text
-MARGIN         --> formatConfig.layout.margin ('small'=6, 'medium'=10, 'large'=16)
-PAGE_WIDTH/H   --> derived from formatConfig.layout.pageFormat ('a4'=210x297, 'letter'=216x279)
-heroTileH      --> formatConfig.layout.heroBannerHeight ('hidden'=0, 'small'=35, 'medium'=50, 'large'=70)
-tileWidth      --> split by formatConfig.layout.imageRatio
-Font sizes     --> formatConfig.typography.*
-Color palette  --> formatConfig.colors.*
-Title text     --> formatConfig.branding.customTitle
-Tagline        --> formatConfig.branding.tagline
-Disclaimer     --> conditionally rendered based on formatConfig.branding.showDisclaimer
-```
-
-- The existing `FOOD_COLORS` / `FITNESS_COLORS` constants become the defaults when no config is provided
-
-#### 5. Files changed
+### Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/types/brochure.ts` | Add `BrochureFormatConfig` interface and `DEFAULT_FORMAT_CONFIG` |
-| `src/components/BrochureFormatPanel.tsx` | New component -- customization accordion panel |
-| `src/components/BrochurePreview.tsx` | Add format state, render panel, pass config to PDF generator |
-| `src/lib/pdf-tile-generator.ts` | Accept and use `BrochureFormatConfig` instead of hard-coded values |
+| `src/pages/Index.tsx` | Add `regenerateMeal`, `regenerateDay`, and `regenerateFitnessDay` handlers; replace placeholder callbacks |
 
-No backend or database changes required -- all customization is client-side.
-
+No backend changes needed -- the Edge Function already handles all three regeneration types.
