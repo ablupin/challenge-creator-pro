@@ -76,6 +76,122 @@ const Index = () => {
     }
   }, []);
 
+  const regenerateMeal = useCallback(async (dayIndex: number, mealIndex: number) => {
+    if (!challenge || challenge.type !== 'food') return;
+    setIsGenerating(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-challenge`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'food',
+            regenerateType: 'meal',
+            dietTheme: challenge.input.dietTheme,
+            mealsPerDay: challenge.input.mealsPerDay,
+            numberOfDays: challenge.input.numberOfDays,
+          }),
+        }
+      );
+      if (!response.ok) throw new Error('Failed to regenerate meal');
+      const data = await response.json();
+      const newPlan = [...challenge.plan];
+      newPlan[dayIndex] = {
+        ...newPlan[dayIndex],
+        meals: newPlan[dayIndex].meals.map((m, i) =>
+          i === mealIndex
+            ? { id: m.id, name: data.meal.name, ingredients: data.meal.ingredients }
+            : m
+        ),
+      };
+      setChallenge({ ...challenge, plan: newPlan });
+      toast.success('Meal regenerated!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to regenerate');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [challenge]);
+
+  const regenerateDay = useCallback(async (dayIndex: number) => {
+    if (!challenge || challenge.type !== 'food') return;
+    setIsGenerating(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-challenge`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'food',
+            regenerateType: 'day',
+            dietTheme: challenge.input.dietTheme,
+            mealsPerDay: challenge.input.mealsPerDay,
+            numberOfDays: challenge.input.numberOfDays,
+          }),
+        }
+      );
+      if (!response.ok) throw new Error('Failed to regenerate day');
+      const data = await response.json();
+      const newPlan = [...challenge.plan];
+      newPlan[dayIndex] = {
+        ...newPlan[dayIndex],
+        meals: data.meals.map((meal: any, i: number) => ({
+          id: `meal-${newPlan[dayIndex].dayNumber}-${i}`,
+          name: meal.name,
+          ingredients: meal.ingredients,
+        })),
+      };
+      setChallenge({ ...challenge, plan: newPlan });
+      toast.success('Day regenerated!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to regenerate');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [challenge]);
+
+  const regenerateFitnessDay = useCallback(async (dayIndex: number) => {
+    if (!challenge || challenge.type !== 'fitness') return;
+    setIsGenerating(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-challenge`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'fitness',
+            regenerateType: 'day',
+            workoutTheme: challenge.input.workoutTheme,
+            exercisesPerWorkout: challenge.input.exercisesPerWorkout,
+            numberOfDays: challenge.input.numberOfDays,
+          }),
+        }
+      );
+      if (!response.ok) throw new Error('Failed to regenerate workout');
+      const data = await response.json();
+      const newPlan = [...challenge.plan];
+      newPlan[dayIndex] = {
+        ...newPlan[dayIndex],
+        isRestDay: false,
+        exercises: data.exercises.map((ex: any, i: number) => ({
+          id: `ex-${newPlan[dayIndex].dayNumber}-${i}`,
+          name: ex.name,
+          sets: ex.sets,
+          reps: String(ex.reps),
+        })),
+      };
+      setChallenge({ ...challenge, plan: newPlan });
+      toast.success('Workout regenerated!');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to regenerate');
+    } finally {
+      setIsGenerating(false);
+    }
+  }, [challenge]);
+
   const handleApprove = () => {
     if (challenge) {
       setChallenge({ ...challenge, approved: true });
@@ -126,8 +242,8 @@ const Index = () => {
               key="meal-editor"
               plan={challenge.plan}
               onUpdatePlan={(p) => setChallenge({ ...challenge, plan: p })}
-              onRegenerateMeal={() => toast.info('Regenerating meal...')}
-              onRegenerateDay={() => toast.info('Regenerating day...')}
+              onRegenerateMeal={(dayIndex, mealIndex) => regenerateMeal(dayIndex, mealIndex)}
+              onRegenerateDay={(dayIndex) => regenerateDay(dayIndex)}
               onRegenerateAll={() => generatePlan(challenge.input, 'food')}
               onBack={() => setStep('input-form')}
               onApprove={handleApprove}
@@ -140,7 +256,7 @@ const Index = () => {
               key="workout-editor"
               plan={challenge.plan}
               onUpdatePlan={(p) => setChallenge({ ...challenge, plan: p })}
-              onRegenerateDay={() => toast.info('Regenerating day...')}
+              onRegenerateDay={(dayIndex) => regenerateFitnessDay(dayIndex)}
               onRegenerateAll={() => generatePlan(challenge.input, 'fitness')}
               onToggleRestDay={(i) => {
                 const newPlan = [...challenge.plan];
