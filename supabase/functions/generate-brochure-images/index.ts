@@ -48,6 +48,11 @@ async function uploadImageToStorage(
   imageData: string
 ): Promise<string | null> {
   try {
+    // If imageData is already a URL, return it directly (no need to re-upload)
+    if (imageData.startsWith('http://') || imageData.startsWith('https://')) {
+      return imageData;
+    }
+
     const bytes = base64ToBlob(imageData);
     const filePath = `${sessionId}/${imageName}.jpg`;
     
