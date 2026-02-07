@@ -6,8 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Challenge, FoodDay, FitnessDay, FoodChallenge, FitnessChallenge } from '@/types/challenge';
+import { BrochureFormatConfig, DEFAULT_FOOD_FORMAT, DEFAULT_FITNESS_FORMAT } from '@/types/brochure';
 import { generateTileBasedPDF } from '@/lib/pdf-tile-generator';
 import { useBrochureImages } from '@/hooks/useBrochureImages';
+import { BrochureFormatPanel } from '@/components/BrochureFormatPanel';
 
 interface BrochurePreviewProps {
   challenge: Challenge;
@@ -18,11 +20,16 @@ interface BrochurePreviewProps {
 export function BrochurePreview({ challenge, onExport, onStartNew }: BrochurePreviewProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const { brochureImages, generateBrochureImages } = useBrochureImages();
-  
+  const [formatConfig, setFormatConfig] = useState<BrochureFormatConfig>(
+    challenge.type === 'food' ? { ...DEFAULT_FOOD_FORMAT } : { ...DEFAULT_FITNESS_FORMAT }
+  );
   const isFood = challenge.type === 'food';
   const Icon = isFood ? Utensils : Dumbbell;
   const gradient = isFood ? 'bg-gradient-food' : 'bg-gradient-fitness';
-  const title = isFood ? 'Food Challenge' : 'Fitness Challenge';
+  const title = formatConfig.branding.customTitle || (isFood ? 'Food Challenge' : 'Fitness Challenge');
+  const primaryStyle = {
+    background: `rgb(${formatConfig.colors.primary.join(',')})`,
+  };
 
   // Get influencer photos from challenge input (stored as photoPreviews - base64 strings)
   const influencerPhotos = isFood
@@ -51,7 +58,7 @@ export function BrochurePreview({ challenge, onExport, onStartNew }: BrochurePre
       
       toast.info('Creating your PDF...', { duration: 3000 });
       
-      await generateTileBasedPDF(challenge, images);
+      await generateTileBasedPDF(challenge, images, formatConfig);
       
       toast.success('PDF downloaded successfully!');
     } catch (error) {
@@ -66,7 +73,7 @@ export function BrochurePreview({ challenge, onExport, onStartNew }: BrochurePre
         dayImages: [],
         isGenerating: false,
         progress: { current: 0, total: 0, stage: 'idle' }
-      });
+      }, formatConfig);
     } finally {
       setIsDownloading(false);
     }
@@ -122,7 +129,7 @@ export function BrochurePreview({ challenge, onExport, onStartNew }: BrochurePre
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           {/* Title Page */}
           <Card className="aspect-[3/4] overflow-hidden hover:shadow-lg transition-shadow relative group">
-            <div className={`h-full ${gradient} flex flex-col items-center justify-center p-4 text-white`}>
+            <div style={primaryStyle} className="h-full flex flex-col items-center justify-center p-4 text-white">
               <Icon className="w-8 h-8 mb-2" />
               <p className="text-xs font-semibold text-center uppercase tracking-wider">
                 {isFood 
@@ -140,7 +147,7 @@ export function BrochurePreview({ challenge, onExport, onStartNew }: BrochurePre
           {/* Day Pages */}
           {(challenge.plan as (FoodDay | FitnessDay)[]).map((day, index) => (
             <Card key={index} className="aspect-[3/4] overflow-hidden hover:shadow-lg transition-shadow relative group">
-              <CardHeader className={`${gradient} py-2 px-3`}>
+              <CardHeader style={primaryStyle} className="py-2 px-3">
                 <CardTitle className="text-white text-sm">Day {day.dayNumber}</CardTitle>
               </CardHeader>
               <CardContent className="p-2 text-xs">
@@ -173,6 +180,15 @@ export function BrochurePreview({ challenge, onExport, onStartNew }: BrochurePre
             </Card>
           ))}
         </div>
+      </div>
+
+      {/* Format Customization Panel */}
+      <div className="mb-8">
+        <BrochureFormatPanel
+          config={formatConfig}
+          onChange={setFormatConfig}
+          challengeType={isFood ? 'food' : 'fitness'}
+        />
       </div>
 
       {/* Download Progress */}
