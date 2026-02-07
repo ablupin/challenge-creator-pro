@@ -1,101 +1,113 @@
 
 
-## Fix: Connect Regenerate Day and Regenerate Meal Buttons to the API
+## Fix: Compress and Upload Influencer Photos to Prevent Oversized Payloads
 
 ### Problem
 
-The "Regenerate Day" and "Regenerate Meal" buttons currently display a toast notification but never call the backend. The Edge Function already supports single-day and single-meal regeneration -- the frontend just needs to be wired up.
+Influencer photos are read at full camera resolution (often 3-10MB each as base64) and sent directly in the edge function request body. With 5 photos, the payload can reach 10-50MB, exceeding the ~2MB limit and causing all image generation to silently fail.
 
-### Solution
+### Solution (Two-Part)
 
-Add two new handler functions in `Index.tsx` that call the `generate-challenge` Edge Function with the correct `regenerateType` parameter, then splice the AI-generated result back into the existing plan.
+**Part 1: Compress photos on upload** -- Resize images client-side using an HTML Canvas before storing them. This reduces each photo from 3-10MB down to ~100-200KB while keeping enough quality for AI processing.
+
+**Part 2: Upload to storage before calling the edge function** -- Instead of sending base64 strings in the request body, upload the compressed photos to the `brochure-images` storage bucket and pass only their public URLs to the edge function.
+
+Together, these changes reduce the payload from ~10-50MB to under 1KB of URL strings.
 
 ---
 
-### Changes
+### What Changes
 
-**File: `src/pages/Index.tsx`**
+**New file: `src/lib/image-compression.ts`**
 
-1. Add a `regenerateMeal` async handler:
-   - Calls the Edge Function with `{ type: 'food', regenerateType: 'meal', dietTheme, mealsPerDay }`
-   - Receives a single `{ meal: { name, ingredients } }` response
-   - Replaces the specific meal at `plan[dayIndex].meals[mealIndex]` with the new meal
-   - Shows a success toast on completion and an error toast on failure
-   - Wrapped in try/catch for proper error handling
+A utility that takes a base64 data URL and returns a compressed version:
 
-2. Add a `regenerateDay` async handler for food challenges:
-   - Calls the Edge Function with `{ type: 'food', regenerateType: 'day', dietTheme, mealsPerDay }`
-   - Receives `{ meals: [...] }` response
-   - Replaces all meals at `plan[dayIndex]` with the new meals
-   - Shows a success toast on completion
+- Loads the image into an HTML Canvas
+- Scales it down to a maximum of 1024px on the longest side (sufficient for AI reference)
+- Exports as JPEG at 0.7 quality
+- Returns the compressed base64 data URL
+- Typical output size: 80-200KB per photo (down from 3-10MB)
 
-3. Add a `regenerateFitnessDay` async handler for fitness challenges:
-   - Calls the Edge Function with `{ type: 'fitness', regenerateType: 'day', workoutTheme, exercisesPerWorkout }`
-   - Receives `{ exercises: [...] }` response
-   - Replaces all exercises at `plan[dayIndex]` with the new exercises
-   - Shows a success toast on completion
+**Updated file: `src/components/FoodChallengeForm.tsx`**
 
-4. Replace the placeholder toast-only callbacks with the real handlers:
-   - `onRegenerateMeal={(dayIndex, mealIndex) => regenerateMeal(dayIndex, mealIndex)}`
-   - `onRegenerateDay={(dayIndex) => regenerateDay(dayIndex)}` (for food)
-   - `onRegenerateDay={(dayIndex) => regenerateFitnessDay(dayIndex)}` (for fitness)
+- After reading each file with FileReader, pass the result through the compression utility before adding it to `photosPreviews`
+- The preview thumbnails and downstream data both use the compressed version
+- Same change applied to the fitness form
 
-5. Use the existing `isGenerating` state to disable buttons during regeneration and show the spinner animation.
+**Updated file: `src/components/FitnessChallengeForm.tsx`**
+
+- Same compression logic as FoodChallengeForm
+
+**Updated file: `src/hooks/useBrochureImages.ts`**
+
+- Before calling the edge function, upload each compressed influencer photo to `brochure-images/{sessionId}/influencer-{index}.jpg` using the Supabase storage client
+- Collect the resulting public URLs
+- Pass only the URLs (not base64) in the edge function request body
+- If any upload fails, skip that photo gracefully
+
+**Updated file: `supabase/functions/generate-brochure-images/index.ts`**
+
+- Add a defensive check: if an influencer photo is already a URL (starts with `http`), pass it directly to the AI API without trying to process it as base64
 
 ---
 
 ### Technical Details
 
-Handler pattern (example for single meal):
+#### Image compression utility
 
-```typescript
-const regenerateMeal = useCallback(async (dayIndex: number, mealIndex: number) => {
-  if (!challenge || challenge.type !== 'food') return;
-  setIsGenerating(true);
-  try {
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-challenge`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: 'food',
-          regenerateType: 'meal',
-          dietTheme: challenge.input.dietTheme,
-          mealsPerDay: challenge.input.mealsPerDay,
-          numberOfDays: challenge.input.numberOfDays,
-        }),
-      }
-    );
-    if (!response.ok) throw new Error('Failed to regenerate meal');
-    const data = await response.json();
-    const newPlan = [...challenge.plan];
-    newPlan[dayIndex] = {
-      ...newPlan[dayIndex],
-      meals: newPlan[dayIndex].meals.map((m, i) =>
-        i === mealIndex
-          ? { id: m.id, name: data.meal.name, ingredients: data.meal.ingredients }
-          : m
-      ),
-    };
-    setChallenge({ ...challenge, plan: newPlan });
-    toast.success('Meal regenerated!');
-  } catch (error) {
-    toast.error(error instanceof Error ? error.message : 'Failed to regenerate');
-  } finally {
-    setIsGenerating(false);
-  }
-}, [challenge]);
+```text
+compressImage(dataUrl: string, maxSize: number = 1024, quality: number = 0.7): Promise<string>
+  1. Create an Image element, set src to dataUrl
+  2. Wait for load
+  3. Calculate new dimensions (scale longest side to maxSize, maintain aspect ratio)
+  4. Create a Canvas at the new dimensions
+  5. Draw the image onto the canvas
+  6. Export with canvas.toDataURL('image/jpeg', quality)
+  7. Return the compressed data URL
 ```
 
-The same pattern applies for `regenerateDay` (food) and `regenerateFitnessDay`, just with different `regenerateType` values and response parsing.
+#### Storage upload flow in useBrochureImages
+
+```text
+async function uploadInfluencerPhotos(photos: string[], sessionId: string): Promise<string[]>
+  For each photo:
+    1. Convert base64 data URL to Uint8Array (strip the data: prefix, atob, charCodeAt)
+    2. Upload to supabase.storage.from('brochure-images').upload(
+         `${sessionId}/influencer-${index}.jpg`, bytes, { contentType: 'image/jpeg', upsert: true }
+       )
+    3. Get public URL with getPublicUrl()
+    4. On error, log warning and skip (return empty string)
+  Return array of valid URLs (filter out empty strings)
+```
+
+#### Edge function defensive check
+
+```text
+In generateImage():
+  If sourceImage starts with 'http', use it directly as image_url
+  If sourceImage starts with 'data:', use it as image_url (already works)
+  This ensures URLs from storage work just as well as base64
+```
+
+#### Size reduction summary
+
+| Stage | Before | After |
+|-------|--------|-------|
+| Raw photo from camera | 3-10MB base64 | -- |
+| After compression | -- | 80-200KB base64 |
+| In edge function payload | 5 photos x 5MB = ~25MB | 5 URL strings = ~500 bytes |
+| Total payload | 25-50MB (fails) | ~2KB (succeeds) |
 
 ---
 
-### Files to Modify
+### Files to Create/Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/Index.tsx` | Add `regenerateMeal`, `regenerateDay`, and `regenerateFitnessDay` handlers; replace placeholder callbacks |
+| `src/lib/image-compression.ts` | New -- canvas-based image compression utility |
+| `src/components/FoodChallengeForm.tsx` | Compress photos on upload before storing as previews |
+| `src/components/FitnessChallengeForm.tsx` | Same compression logic |
+| `src/hooks/useBrochureImages.ts` | Upload compressed photos to storage, pass URLs to edge function |
+| `supabase/functions/generate-brochure-images/index.ts` | Handle URL inputs alongside base64 in image generation |
 
-No backend changes needed -- the Edge Function already handles all three regeneration types.
+No database changes needed. The `brochure-images` storage bucket already exists and is used by the edge function.
