@@ -16,6 +16,58 @@ const initialState: BrochureImages = {
   }
 };
 
+/**
+ * Upload compressed influencer photos to storage and return public URLs.
+ * This avoids sending large base64 payloads in the edge function request.
+ */
+async function uploadInfluencerPhotos(
+  photos: string[],
+  sessionId: string
+): Promise<string[]> {
+  const urls: string[] = [];
+
+  for (let index = 0; index < photos.length; index++) {
+    const photo = photos[index];
+    try {
+      // Convert base64 data URL to Uint8Array
+      const base64 = photo.split(',')[1];
+      if (!base64) {
+        console.warn(`Photo ${index}: invalid data URL, skipping`);
+        continue;
+      }
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      const filePath = `${sessionId}/influencer-${index}.jpg`;
+
+      const { error } = await supabase.storage
+        .from('brochure-images')
+        .upload(filePath, bytes, {
+          contentType: 'image/jpeg',
+          upsert: true
+        });
+
+      if (error) {
+        console.warn(`Photo ${index} upload failed:`, error.message);
+        continue;
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('brochure-images')
+        .getPublicUrl(filePath);
+
+      urls.push(urlData.publicUrl);
+    } catch (err) {
+      console.warn(`Photo ${index} upload exception:`, err);
+    }
+  }
+
+  return urls;
+}
+
 export function useBrochureImages() {
   const [brochureImages, setBrochureImages] = useState<BrochureImages>(initialState);
 
@@ -69,6 +121,14 @@ export function useBrochureImages() {
       progress: { current: 0, total: totalImages, stage: 'hero' }
     }));
 
+    // Upload compressed photos to storage first, then pass URLs
+    console.log(`Uploading ${influencerPhotos.length} influencer photos to storage...`);
+    const uploadedPhotoUrls = await uploadInfluencerPhotos(
+      influencerPhotos.slice(0, 5),
+      sessionId
+    );
+    console.log(`Successfully uploaded ${uploadedPhotoUrls.length} photos`);
+
     let lastError: Error | null = null;
 
     // Retry loop
@@ -79,7 +139,7 @@ export function useBrochureImages() {
         const { data, error } = await supabase.functions.invoke('generate-brochure-images', {
           body: {
             type: challenge.type,
-            influencerPhotos: influencerPhotos.slice(0, 5), // Limit to 5 photos
+            influencerPhotos: uploadedPhotoUrls, // URLs instead of base64
             numberOfDays,
             dayMeals,
             dayExercises,

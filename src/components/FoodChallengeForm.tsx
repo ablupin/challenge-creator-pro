@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, Upload, X, Utensils } from 'lucide-react';
+import { compressImage } from '@/lib/image-compression';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,8 +26,15 @@ export function FoodChallengeForm({ onSubmit, onBack }: FoodChallengeFormProps) 
     
     validFiles.forEach(file => {
       const reader = new FileReader();
-      reader.onload = (e) => {
-        setPhotosPreviews(prev => [...prev, e.target?.result as string]);
+      reader.onload = async (e) => {
+        const rawDataUrl = e.target?.result as string;
+        try {
+          const compressed = await compressImage(rawDataUrl);
+          setPhotosPreviews(prev => [...prev, compressed]);
+        } catch {
+          // Fallback to uncompressed if compression fails
+          setPhotosPreviews(prev => [...prev, rawDataUrl]);
+        }
       };
       reader.readAsDataURL(file);
     });
