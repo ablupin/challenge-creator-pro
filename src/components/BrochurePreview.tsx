@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRight, FileText, Utensils, Dumbbell, ExternalLink, Download, Loader2, Sparkles, ImageIcon } from 'lucide-react';
+import { ArrowRight, FileText, Utensils, Dumbbell, Copy, Download, Loader2, Sparkles, ImageIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -35,6 +35,15 @@ export function BrochurePreview({ challenge, onExport, onStartNew }: BrochurePre
   const influencerPhotos = isFood
     ? (challenge as FoodChallenge).input.photoPreviews || []
     : (challenge as FitnessChallenge).input.photoPreviews || [];
+
+  const handleExport = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      toast.success("Link copied!", { description: "Share this link to let others view your challenge." });
+    } catch {
+      toast.info("Canva export coming soon!", { description: "For now, use the PDF download below." });
+    }
+  };
 
   const handleGenerateAndDownloadPDF = async () => {
     setIsDownloading(true);
@@ -221,16 +230,16 @@ export function BrochurePreview({ challenge, onExport, onStartNew }: BrochurePre
             <div>
               <h3 className="font-display text-xl font-bold mb-2">Export to Canva</h3>
               <p className="text-muted-foreground">
-                Your brochure will be exported as a Canva-compatible file with editable text, replaceable images, and customizable branding.
+                Download your brochure as a polished AI-generated PDF, or copy a shareable link.
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
               <Button
-                onClick={onExport}
+                onClick={handleExport}
                 className={`gap-2 ${gradient} hover:opacity-90 text-white min-w-[180px]`}
               >
-                <ExternalLink className="w-4 h-4" />
-                Open in Canva
+                <Copy className="w-4 h-4" />
+                Copy Share Link
               </Button>
               <Button 
                 variant="outline" 

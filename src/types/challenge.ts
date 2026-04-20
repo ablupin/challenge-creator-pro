@@ -56,11 +56,9 @@ export interface FitnessChallenge {
 
 export type Challenge = FoodChallenge | FitnessChallenge;
 
-export type WizardStep = 
+export type WizardStep =
   | 'select-type'
   | 'input-form'
   | 'ai-draft'
   | 'edit-plan'
-  | 'approval'
-  | 'brochure-preview'
-  | 'export';
+  | 'brochure-preview';

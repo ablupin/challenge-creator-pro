@@ -182,7 +182,7 @@ export function MealPlanEditor({
           onClick={onApprove}
           className="gap-2 bg-gradient-food hover:opacity-90 text-white px-8"
         >
-          Approve Food Challenge
+          Looks Good → Generate Brochure
           <ArrowRight className="w-4 h-4" />
         </Button>
       </div>
