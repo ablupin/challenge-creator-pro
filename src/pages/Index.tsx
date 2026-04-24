@@ -1,6 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
+import { Link, useSearchParams } from 'react-router-dom';
+import { LayoutDashboard } from 'lucide-react';
 import { StepProgress } from '@/components/StepProgress';
 import { ChallengeTypeSelector } from '@/components/ChallengeTypeSelector';
 import { FoodChallengeForm } from '@/components/FoodChallengeForm';
@@ -10,12 +12,34 @@ import { MealPlanEditor } from '@/components/MealPlanEditor';
 import { WorkoutPlanEditor } from '@/components/WorkoutPlanEditor';
 import { BrochurePreview } from '@/components/BrochurePreview';
 import { ChallengeType, WizardStep, FoodChallengeInput, FitnessChallengeInput, FoodDay, FitnessDay, Challenge } from '@/types/challenge';
+import { useInfluencers, useCreateChallenge } from '@/hooks/useDashboard';
+import { AddInfluencerModal } from '@/components/dashboard/AddInfluencerModal';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const Index = () => {
   const [step, setStep] = useState<WizardStep>('select-type');
   const [challengeType, setChallengeType] = useState<ChallengeType | null>(null);
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [influencerIdForSave, setInfluencerIdForSave] = useState<string | null>(null);
+  const [addInfluencerOpen, setAddInfluencerOpen] = useState(false);
+
+  const [searchParams] = useSearchParams();
+  const { influencers } = useInfluencers();
+  const createChallenge = useCreateChallenge();
+
+  useEffect(() => {
+    const paramInfluencer = searchParams.get('influencer');
+    if (paramInfluencer) {
+      setInfluencerIdForSave(paramInfluencer);
+    }
+  }, [searchParams]);
 
   const handleSelectType = (type: ChallengeType) => {
     setChallengeType(type);
@@ -192,10 +216,40 @@ const Index = () => {
     }
   }, [challenge]);
 
+  const saveChallengeRecord = useCallback(async (approvedChallenge: Challenge) => {
+    if (!influencerIdForSave) return;
+    const today = new Date();
+    const expiryDate = new Date(today);
+    expiryDate.setDate(expiryDate.getDate() + approvedChallenge.input.numberOfDays);
+
+    const title =
+      approvedChallenge.type === 'food'
+        ? `${approvedChallenge.input.dietTheme} Challenge`
+        : `${approvedChallenge.input.workoutTheme} Challenge`;
+
+    try {
+      await createChallenge.mutateAsync({
+        influencer_id: influencerIdForSave,
+        title,
+        type: approvedChallenge.type,
+        drop_date: today.toISOString().split('T')[0],
+        expiry_date: expiryDate.toISOString().split('T')[0],
+        status: 'active',
+        plan_json: approvedChallenge.plan,
+        pdf_url: null,
+        notes: null,
+      });
+    } catch {
+      // Non-blocking — don't interrupt the brochure flow
+    }
+  }, [influencerIdForSave, createChallenge]);
+
   const handleApprove = () => {
     if (challenge) {
-      setChallenge({ ...challenge, approved: true });
+      const approved = { ...challenge, approved: true };
+      setChallenge(approved);
       setStep('brochure-preview');
+      saveChallengeRecord(approved);
     }
   };
 
@@ -212,8 +266,17 @@ const Index = () => {
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-50">
-        <div className="container py-4">
+        <div className="container py-4 flex items-center">
           <h1 className="font-display text-xl font-bold text-gradient-hero">ChallengeForge</h1>
+          <div className="ml-auto">
+            <Link
+              to="/dashboard"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <LayoutDashboard className="w-4 h-4" />
+              Dashboard
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -224,19 +287,50 @@ const Index = () => {
           </div>
         )}
 
+        {step === 'select-type' && (
+          <div className="flex justify-center mb-6">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground whitespace-nowrap">Creating for:</span>
+              <Select
+                value={influencerIdForSave ?? 'none'}
+                onValueChange={(v) => {
+                  if (v === 'add-new') {
+                    setAddInfluencerOpen(true);
+                  } else {
+                    setInfluencerIdForSave(v === 'none' ? null : v);
+                  }
+                }}
+              >
+                <SelectTrigger className="w-52">
+                  <SelectValue placeholder="Select influencer..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No influencer</SelectItem>
+                  {influencers.map((inf) => (
+                    <SelectItem key={inf.id} value={inf.id}>
+                      {inf.name}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="add-new">+ Add new influencer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
           {step === 'select-type' && <ChallengeTypeSelector key="select" onSelect={handleSelectType} />}
-          
+
           {step === 'input-form' && challengeType === 'food' && (
             <FoodChallengeForm key="food-form" onSubmit={(i) => generatePlan(i, 'food')} onBack={() => setStep('select-type')} />
           )}
-          
+
           {step === 'input-form' && challengeType === 'fitness' && (
             <FitnessChallengeForm key="fitness-form" onSubmit={(i) => generatePlan(i, 'fitness')} onBack={() => setStep('select-type')} />
           )}
-          
+
           {step === 'ai-draft' && challengeType && <AIGeneratingView key="generating" challengeType={challengeType} />}
-          
+
           {step === 'edit-plan' && challenge?.type === 'food' && (
             <MealPlanEditor
               key="meal-editor"
@@ -250,7 +344,7 @@ const Index = () => {
               isRegenerating={isGenerating}
             />
           )}
-          
+
           {step === 'edit-plan' && challenge?.type === 'fitness' && (
             <WorkoutPlanEditor
               key="workout-editor"
@@ -268,12 +362,14 @@ const Index = () => {
               isRegenerating={isGenerating}
             />
           )}
-          
+
           {step === 'brochure-preview' && challenge && (
             <BrochurePreview key="preview" challenge={challenge} onExport={handleExport} onStartNew={handleStartNew} />
           )}
         </AnimatePresence>
       </main>
+
+      <AddInfluencerModal open={addInfluencerOpen} onClose={() => setAddInfluencerOpen(false)} />
     </div>
   );
 };
