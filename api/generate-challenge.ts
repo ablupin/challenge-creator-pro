@@ -7,7 +7,8 @@ const corsHeaders = {
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'OPTIONS') {
-    return res.status(200).set(corsHeaders).end();
+    Object.entries(corsHeaders).forEach(([k, v]) => res.setHeader(k, v));
+    return res.status(200).end();
   }
 
   try {
@@ -163,7 +164,8 @@ Use appropriate sets (2-5) based on exercise intensity.`;
     }
 
     const parsed = JSON.parse(content);
-    return res.status(200).set(corsHeaders).json(parsed);
+    Object.entries(corsHeaders).forEach(([k, v]) => res.setHeader(k, v));
+    return res.status(200).json(parsed);
 
   } catch (error) {
     console.error('generate-challenge error:', error);
