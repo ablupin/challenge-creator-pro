@@ -14,8 +14,8 @@ interface FoodChallengeFormProps {
 }
 
 export function FoodChallengeForm({ onSubmit, onBack }: FoodChallengeFormProps) {
-  const [numberOfDays, setNumberOfDays] = useState(7);
-  const [mealsPerDay, setMealsPerDay] = useState(3);
+  const [numberOfDays, setNumberOfDays] = useState('7');
+  const [mealsPerDay, setMealsPerDay] = useState('3');
   const [dietTheme, setDietTheme] = useState('');
   const [photos, setPhotos] = useState<File[]>([]);
   const [photosPreviews, setPhotosPreviews] = useState<string[]>([]);
@@ -52,8 +52,8 @@ export function FoodChallengeForm({ onSubmit, onBack }: FoodChallengeFormProps) 
     if (!dietTheme.trim()) return;
     
     onSubmit({
-      numberOfDays,
-      mealsPerDay,
+      numberOfDays: Math.min(30, Math.max(1, parseInt(numberOfDays) || 1)),
+      mealsPerDay: Math.min(6, Math.max(1, parseInt(mealsPerDay) || 1)),
       dietTheme: dietTheme.trim(),
       photos,
       photoPreviews: photosPreviews,
@@ -88,10 +88,9 @@ export function FoodChallengeForm({ onSubmit, onBack }: FoodChallengeFormProps) 
             <Input
               id="days"
               type="number"
-              min={1}
-              max={30}
               value={numberOfDays}
-              onChange={(e) => setNumberOfDays(parseInt(e.target.value) || 1)}
+              onChange={(e) => setNumberOfDays(e.target.value)}
+              onBlur={() => setNumberOfDays(String(Math.min(30, Math.max(1, parseInt(numberOfDays) || 1))))}
               className="h-12 text-lg"
             />
             <p className="text-sm text-muted-foreground">Duration of the challenge (1-30 days)</p>
@@ -102,10 +101,9 @@ export function FoodChallengeForm({ onSubmit, onBack }: FoodChallengeFormProps) 
             <Input
               id="meals"
               type="number"
-              min={1}
-              max={6}
               value={mealsPerDay}
-              onChange={(e) => setMealsPerDay(parseInt(e.target.value) || 1)}
+              onChange={(e) => setMealsPerDay(e.target.value)}
+              onBlur={() => setMealsPerDay(String(Math.min(6, Math.max(1, parseInt(mealsPerDay) || 1))))}
               className="h-12 text-lg"
             />
             <p className="text-sm text-muted-foreground">Number of meals each day (1-6)</p>

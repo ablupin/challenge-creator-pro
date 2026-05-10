@@ -30,10 +30,13 @@ export function WorkoutPlanEditor({
 }: WorkoutPlanEditorProps) {
   const [editingExercise, setEditingExercise] = useState<{ dayIndex: number; exerciseIndex: number } | null>(null);
   const [editedExercise, setEditedExercise] = useState<Exercise | null>(null);
+  const [setsInput, setSetsInput] = useState('');
 
   const startEditing = (dayIndex: number, exerciseIndex: number) => {
     setEditingExercise({ dayIndex, exerciseIndex });
-    setEditedExercise({ ...plan[dayIndex].exercises[exerciseIndex] });
+    const ex = plan[dayIndex].exercises[exerciseIndex];
+    setEditedExercise({ ...ex });
+    setSetsInput(String(ex.sets));
   };
 
   const saveEdit = () => {
@@ -49,6 +52,7 @@ export function WorkoutPlanEditor({
   const cancelEdit = () => {
     setEditingExercise(null);
     setEditedExercise(null);
+    setSetsInput('');
   };
 
   return (
@@ -161,9 +165,13 @@ export function WorkoutPlanEditor({
                                 <td className="p-4">
                                   <Input
                                     type="number"
-                                    min={1}
-                                    value={editedExercise.sets}
-                                    onChange={(e) => setEditedExercise({ ...editedExercise, sets: parseInt(e.target.value) || 1 })}
+                                    value={setsInput}
+                                    onChange={(e) => setSetsInput(e.target.value)}
+                                    onBlur={() => {
+                                      const val = Math.max(1, parseInt(setsInput) || 1);
+                                      setSetsInput(String(val));
+                                      setEditedExercise({ ...editedExercise, sets: val });
+                                    }}
                                     className="h-9 text-center"
                                   />
                                 </td>

@@ -14,9 +14,9 @@ interface FitnessChallengeFormProps {
 }
 
 export function FitnessChallengeForm({ onSubmit, onBack }: FitnessChallengeFormProps) {
-  const [numberOfDays, setNumberOfDays] = useState(7);
+  const [numberOfDays, setNumberOfDays] = useState('7');
   const [workoutTheme, setWorkoutTheme] = useState('');
-  const [exercisesPerWorkout, setExercisesPerWorkout] = useState(5);
+  const [exercisesPerWorkout, setExercisesPerWorkout] = useState('5');
   const [photos, setPhotos] = useState<File[]>([]);
   const [photosPreviews, setPhotosPreviews] = useState<string[]>([]);
 
@@ -52,9 +52,9 @@ export function FitnessChallengeForm({ onSubmit, onBack }: FitnessChallengeFormP
     if (!workoutTheme.trim()) return;
     
     onSubmit({
-      numberOfDays,
+      numberOfDays: Math.min(30, Math.max(1, parseInt(numberOfDays) || 1)),
       workoutTheme: workoutTheme.trim(),
-      exercisesPerWorkout,
+      exercisesPerWorkout: Math.min(15, Math.max(1, parseInt(exercisesPerWorkout) || 1)),
       photos,
       photoPreviews: photosPreviews,
     });
@@ -88,10 +88,9 @@ export function FitnessChallengeForm({ onSubmit, onBack }: FitnessChallengeFormP
             <Input
               id="days"
               type="number"
-              min={1}
-              max={30}
               value={numberOfDays}
-              onChange={(e) => setNumberOfDays(parseInt(e.target.value) || 1)}
+              onChange={(e) => setNumberOfDays(e.target.value)}
+              onBlur={() => setNumberOfDays(String(Math.min(30, Math.max(1, parseInt(numberOfDays) || 1))))}
               className="h-12 text-lg"
             />
             <p className="text-sm text-muted-foreground">Duration of the challenge (1-30 days)</p>
@@ -102,10 +101,9 @@ export function FitnessChallengeForm({ onSubmit, onBack }: FitnessChallengeFormP
             <Input
               id="exercises"
               type="number"
-              min={1}
-              max={15}
               value={exercisesPerWorkout}
-              onChange={(e) => setExercisesPerWorkout(parseInt(e.target.value) || 1)}
+              onChange={(e) => setExercisesPerWorkout(e.target.value)}
+              onBlur={() => setExercisesPerWorkout(String(Math.min(15, Math.max(1, parseInt(exercisesPerWorkout) || 1))))}
               className="h-12 text-lg"
             />
             <p className="text-sm text-muted-foreground">Number of exercises each day (1-15)</p>
