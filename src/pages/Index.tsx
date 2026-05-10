@@ -51,7 +51,7 @@ const Index = () => {
     setIsGenerating(true);
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-challenge`, {
+      const response = await fetch('/api/generate-challenge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
@@ -105,7 +105,7 @@ const Index = () => {
     setIsGenerating(true);
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-challenge`,
+        '/api/generate-challenge',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -143,7 +143,7 @@ const Index = () => {
     setIsGenerating(true);
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-challenge`,
+        '/api/generate-challenge',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -181,7 +181,7 @@ const Index = () => {
     setIsGenerating(true);
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-challenge`,
+        '/api/generate-challenge',
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
