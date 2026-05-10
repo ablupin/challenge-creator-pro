@@ -30,6 +30,7 @@ export interface FoodChallengeInput {
   dietTheme: string;
   photos: File[];
   photoPreviews: string[];
+  selectedTemplate?: string;
 }
 
 export interface FitnessChallengeInput {
@@ -38,6 +39,7 @@ export interface FitnessChallengeInput {
   exercisesPerWorkout: number;
   photos: File[];
   photoPreviews: string[];
+  selectedTemplate?: string;
 }
 
 export interface FoodChallenge {
@@ -58,6 +60,7 @@ export type Challenge = FoodChallenge | FitnessChallenge;
 
 export type WizardStep =
   | 'select-type'
+  | 'select-template'
   | 'input-form'
   | 'ai-draft'
   | 'edit-plan'

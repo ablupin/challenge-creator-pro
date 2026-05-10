@@ -11,6 +11,7 @@ import { AIGeneratingView } from '@/components/AIGeneratingView';
 import { MealPlanEditor } from '@/components/MealPlanEditor';
 import { WorkoutPlanEditor } from '@/components/WorkoutPlanEditor';
 import { BrochurePreview } from '@/components/BrochurePreview';
+import { TemplatePicker } from '@/components/TemplatePicker';
 import { ChallengeType, WizardStep, FoodChallengeInput, FitnessChallengeInput, FoodDay, FitnessDay, Challenge } from '@/types/challenge';
 import { useInfluencers, useCreateChallenge } from '@/hooks/useDashboard';
 import { AddInfluencerModal } from '@/components/dashboard/AddInfluencerModal';
@@ -25,6 +26,7 @@ import {
 const Index = () => {
   const [step, setStep] = useState<WizardStep>('select-type');
   const [challengeType, setChallengeType] = useState<ChallengeType | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('blaze');
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [influencerIdForSave, setInfluencerIdForSave] = useState<string | null>(null);
@@ -43,6 +45,11 @@ const Index = () => {
 
   const handleSelectType = (type: ChallengeType) => {
     setChallengeType(type);
+    setStep('select-template');
+  };
+
+  const handleSelectTemplate = (templateId: string) => {
+    setSelectedTemplate(templateId);
     setStep('input-form');
   };
 
@@ -321,12 +328,29 @@ const Index = () => {
         <AnimatePresence mode="wait">
           {step === 'select-type' && <ChallengeTypeSelector key="select" onSelect={handleSelectType} />}
 
+          {step === 'select-template' && challengeType && (
+            <TemplatePicker
+              key="template-picker"
+              challengeType={challengeType}
+              onSelect={handleSelectTemplate}
+              onBack={() => setStep('select-type')}
+            />
+          )}
+
           {step === 'input-form' && challengeType === 'food' && (
-            <FoodChallengeForm key="food-form" onSubmit={(i) => generatePlan(i, 'food')} onBack={() => setStep('select-type')} />
+            <FoodChallengeForm
+              key="food-form"
+              onSubmit={(i) => generatePlan({ ...i, selectedTemplate }, 'food')}
+              onBack={() => setStep('select-template')}
+            />
           )}
 
           {step === 'input-form' && challengeType === 'fitness' && (
-            <FitnessChallengeForm key="fitness-form" onSubmit={(i) => generatePlan(i, 'fitness')} onBack={() => setStep('select-type')} />
+            <FitnessChallengeForm
+              key="fitness-form"
+              onSubmit={(i) => generatePlan({ ...i, selectedTemplate }, 'fitness')}
+              onBack={() => setStep('select-template')}
+            />
           )}
 
           {step === 'ai-draft' && challengeType && <AIGeneratingView key="generating" challengeType={challengeType} />}

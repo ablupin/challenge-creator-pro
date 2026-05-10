@@ -10,6 +10,7 @@ interface StepProgressProps {
 
 const steps: { key: WizardStep; label: string }[] = [
   { key: 'select-type', label: 'Type' },
+  { key: 'select-template', label: 'Style' },
   { key: 'input-form', label: 'Details' },
   { key: 'ai-draft', label: 'Generate' },
   { key: 'edit-plan', label: 'Edit' },
