@@ -12,6 +12,14 @@ import { useBrochureImages } from '@/hooks/useBrochureImages';
 import { BrochureFormatPanel } from '@/components/BrochureFormatPanel';
 import { getTemplate } from '@/data/templates';
 
+function hexToRgb(hex: string): [number, number, number] {
+  const clean = hex.replace('#', '');
+  const r = parseInt(clean.substring(0, 2), 16);
+  const g = parseInt(clean.substring(2, 4), 16);
+  const b = parseInt(clean.substring(4, 6), 16);
+  return [r, g, b];
+}
+
 interface BrochurePreviewProps {
   challenge: Challenge;
   onExport: () => void;
@@ -31,8 +39,8 @@ export function BrochurePreview({ challenge, onExport, onStartNew, onChangeStyle
   const gradient = isFood ? 'bg-gradient-food' : 'bg-gradient-fitness';
 
   const templateId = isFood
-    ? (challenge as FoodChallenge).input.selectedTemplate || 'blaze'
-    : (challenge as FitnessChallenge).input.selectedTemplate || 'blaze';
+    ? (challenge as FoodChallenge).input.selectedTemplate || 'lumiere'
+    : (challenge as FitnessChallenge).input.selectedTemplate || 'lumiere';
 
   const template = getTemplate(templateId);
 
@@ -46,9 +54,7 @@ export function BrochurePreview({ challenge, onExport, onStartNew, onChangeStyle
     ? `${(challenge as FoodChallenge).input.numberOfDays}-Day ${(challenge as FoodChallenge).input.dietTheme} Food Challenge`
     : `${(challenge as FitnessChallenge).input.numberOfDays}-Day ${(challenge as FitnessChallenge).input.workoutTheme} Challenge`;
 
-  const heroStyle: React.CSSProperties = template.style.headerStyle === 'gradient'
-    ? { background: `linear-gradient(135deg, ${template.colors.primary}, ${template.colors.secondary})` }
-    : { background: template.colors.primary };
+  const heroStyle: React.CSSProperties = { background: template.colors.heroGradient || template.colors.primary };
 
   const handleExport = async () => {
     try {
@@ -79,17 +85,37 @@ export function BrochurePreview({ challenge, onExport, onStartNew, onChangeStyle
       }
 
       toast.info('Creating your PDF...', { duration: 3000 });
-      await generateTileBasedPDF(challenge, images, formatConfig);
+      const templateFormatConfig: BrochureFormatConfig = {
+        ...formatConfig,
+        colors: {
+          primary: hexToRgb(template.colors.primary),
+          secondary: hexToRgb(template.colors.secondary),
+          accent: hexToRgb(template.colors.accent),
+          cardBg: hexToRgb(template.colors.cardBg),
+          text: hexToRgb(template.colors.text),
+        },
+      };
+      await generateTileBasedPDF(challenge, images, templateFormatConfig);
       toast.success('PDF downloaded successfully!');
     } catch (error) {
       console.error('PDF generation error:', error);
       toast.error('Failed to generate images. Downloading basic PDF...');
+      const fallbackFormatConfig: BrochureFormatConfig = {
+        ...formatConfig,
+        colors: {
+          primary: hexToRgb(template.colors.primary),
+          secondary: hexToRgb(template.colors.secondary),
+          accent: hexToRgb(template.colors.accent),
+          cardBg: hexToRgb(template.colors.cardBg),
+          text: hexToRgb(template.colors.text),
+        },
+      };
       await generateTileBasedPDF(challenge, {
         heroImages: [],
         dayImages: [],
         isGenerating: false,
         progress: { current: 0, total: 0, stage: 'idle' }
-      }, formatConfig);
+      }, fallbackFormatConfig);
     } finally {
       setIsDownloading(false);
     }

@@ -12,103 +12,110 @@ interface TemplatePickerProps {
   challengeType: ChallengeType;
 }
 
-function TemplateThumbnail({ template, isSelected, onClick }: {
+function TemplateThumbnail({ template, isSelected, onClick, index }: {
   template: BrochureTemplate;
   isSelected: boolean;
   onClick: () => void;
+  index: number;
 }) {
-  const isDark = template.colors.bg === '#0D0D0D';
+  const foodItems = ['Grilled Salmon', 'Quinoa Bowl', 'Green Smoothie'];
+  const fitnessItems = ['Squat 3×12', 'Deadlift 4×8', 'Plank 45s'];
+  const sampleItems = foodItems;
 
-  const sampleItems = ['Grilled Chicken', 'Quinoa Bowl', 'Green Smoothie'];
+  const isDark = ['lumiere', 'aurora', 'ember', 'cipher'].includes(template.id);
 
   return (
     <motion.div
-      whileHover={{ scale: 1.03 }}
-      whileTap={{ scale: 0.98 }}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.04 }}
+      whileHover={{ scale: 1.04, y: -2 }}
+      whileTap={{ scale: 0.97 }}
       onClick={onClick}
       className={cn(
-        'cursor-pointer rounded-xl overflow-hidden border-2 transition-all duration-200',
+        'cursor-pointer rounded-2xl overflow-hidden transition-all duration-200 flex flex-col',
         isSelected
-          ? 'border-primary ring-2 ring-primary ring-offset-2 shadow-lg'
-          : 'border-border hover:border-primary/50 hover:shadow-md'
+          ? 'ring-2 ring-offset-2 ring-primary shadow-xl'
+          : 'hover:shadow-lg shadow-sm'
       )}
-      style={{ background: template.colors.bg }}
+      style={{
+        background: template.colors.bg,
+        border: isSelected ? `2px solid ${template.colors.primary}` : `1px solid ${template.colors.primary}22`,
+      }}
     >
-      {/* Header band */}
+      {/* Hero band — the money shot */}
       <div
-        className="relative h-16 flex items-center justify-center overflow-hidden"
-        style={{
-          background: template.style.headerStyle === 'gradient'
-            ? `linear-gradient(135deg, ${template.colors.primary}, ${template.colors.secondary})`
-            : template.colors.primary,
-        }}
+        className="relative h-20 flex flex-col items-center justify-center overflow-hidden flex-shrink-0"
+        style={{ background: template.colors.heroGradient }}
       >
         {/* Pattern overlay */}
-        {template.style.pattern === 'dots' && (
-          <div
-            className="absolute inset-0 opacity-20"
+        {template.style.pattern === 'geometric' && (
+          <div className="absolute inset-0 opacity-10"
             style={{
-              backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)',
-              backgroundSize: '8px 8px',
+              backgroundImage: 'repeating-linear-gradient(60deg, transparent, transparent 10px, rgba(255,255,255,0.5) 10px, rgba(255,255,255,0.5) 11px)',
             }}
           />
         )}
         {template.style.pattern === 'diagonal' && (
-          <div
-            className="absolute inset-0 opacity-10"
+          <div className="absolute inset-0 opacity-15"
             style={{
-              backgroundImage: 'repeating-linear-gradient(45deg, white, white 1px, transparent 1px, transparent 8px)',
+              backgroundImage: 'repeating-linear-gradient(45deg, rgba(255,255,255,0.6), rgba(255,255,255,0.6) 1px, transparent 1px, transparent 10px)',
             }}
           />
         )}
-        {template.style.pattern === 'geometric' && (
-          <div
-            className="absolute inset-0 opacity-10"
+        {template.style.pattern === 'dots' && (
+          <div className="absolute inset-0 opacity-20"
             style={{
-              backgroundImage: 'repeating-linear-gradient(0deg, white, white 1px, transparent 1px, transparent 12px), repeating-linear-gradient(90deg, white, white 1px, transparent 1px, transparent 12px)',
+              backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.8) 1px, transparent 1px)',
+              backgroundSize: '8px 8px',
             }}
           />
         )}
-        <div className="relative z-10 text-center px-2">
+
+        <div className="relative z-10 text-center px-3">
           <p
-            className="text-white text-xs font-bold tracking-wide leading-tight"
-            style={{ fontFamily: template.font.heading }}
+            className="text-white text-[10px] font-bold tracking-widest uppercase opacity-90"
+            style={{ fontFamily: template.font.heading, textShadow: '0 1px 3px rgba(0,0,0,0.4)' }}
           >
-            7-DAY CHALLENGE
+            7-Day
+          </p>
+          <p
+            className="text-white text-xs font-bold mt-0.5"
+            style={{ fontFamily: template.font.heading, textShadow: '0 1px 3px rgba(0,0,0,0.4)' }}
+          >
+            Challenge
           </p>
           <div
-            className="mt-0.5 h-0.5 w-8 mx-auto opacity-70"
-            style={{ background: template.colors.accent }}
+            className="mt-1.5 h-px w-10 mx-auto"
+            style={{ background: `linear-gradient(to right, transparent, ${template.colors.accent}, transparent)` }}
           />
         </div>
 
-        {/* Selected check */}
         {isSelected && (
-          <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white flex items-center justify-center">
-            <Check className="w-3 h-3 text-primary" />
+          <div
+            className="absolute top-2 right-2 w-5 h-5 rounded-full flex items-center justify-center shadow-md"
+            style={{ background: template.colors.accent }}
+          >
+            <Check className="w-3 h-3" style={{ color: template.colors.primary }} />
           </div>
         )}
       </div>
 
-      {/* Mini cards */}
-      <div className="p-2 space-y-1.5">
-        {sampleItems.map((item, i) => (
+      {/* Mini content cards */}
+      <div className="p-2 space-y-1 flex-1">
+        {sampleItems.slice(0, 2).map((item, i) => (
           <div
             key={i}
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1',
-              template.style.rounded,
-            )}
+            className="flex items-center gap-1.5 px-2 py-1"
             style={{
-              background: template.colors.cardBg,
+              background: template.style.cardStyle === 'glass'
+                ? `${template.colors.cardBg}cc`
+                : template.colors.cardBg,
+              borderRadius: template.style.rounded === 'rounded-none' ? '2px' : template.style.rounded === 'rounded-3xl' ? '10px' : '6px',
               border: template.style.cardStyle === 'outlined'
                 ? `1px solid ${template.colors.primary}30`
-                : 'none',
-              boxShadow: template.style.cardStyle === 'elevated'
-                ? '0 1px 3px rgba(0,0,0,0.1)'
-                : template.style.cardStyle === 'glass'
-                ? 'inset 0 0 0 1px rgba(255,255,255,0.1)'
-                : 'none',
+                : `1px solid ${template.colors.primary}10`,
+              boxShadow: template.style.cardStyle === 'elevated' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
             }}
           >
             <div
@@ -116,7 +123,7 @@ function TemplateThumbnail({ template, isSelected, onClick }: {
               style={{ background: template.colors.accent || template.colors.primary }}
             />
             <span
-              className="text-[9px] truncate font-medium"
+              className="text-[9px] font-medium truncate"
               style={{ color: template.colors.text, fontFamily: template.font.body }}
             >
               {item}
@@ -125,34 +132,41 @@ function TemplateThumbnail({ template, isSelected, onClick }: {
         ))}
       </div>
 
-      {/* Name & tagline */}
+      {/* Name bar */}
       <div
-        className="px-2 pb-2 pt-0"
-        style={{ borderTop: `1px solid ${template.colors.primary}15` }}
+        className="px-3 py-1.5 flex items-center justify-between"
+        style={{ background: `${template.colors.primary}15`, borderTop: `1px solid ${template.colors.primary}20` }}
       >
-        <p
-          className="text-xs font-bold truncate"
-          style={{ color: template.colors.primary, fontFamily: template.font.heading }}
-        >
-          {template.name}
-        </p>
-        <p
-          className="text-[9px] truncate"
-          style={{ color: template.colors.mutedText }}
-        >
-          {template.tagline}
-        </p>
+        <div>
+          <p
+            className="text-[10px] font-bold leading-none"
+            style={{ color: template.colors.primary, fontFamily: template.font.heading }}
+          >
+            {template.name}
+          </p>
+          <p
+            className="text-[8px] mt-0.5 opacity-70"
+            style={{ color: template.colors.text }}
+          >
+            {template.tagline}
+          </p>
+        </div>
+        {isSelected && (
+          <span
+            className="text-[8px] font-bold px-1.5 py-0.5 rounded-full"
+            style={{ background: template.colors.primary, color: template.colors.bg || '#fff' }}
+          >
+            ✓
+          </span>
+        )}
       </div>
     </motion.div>
   );
 }
 
 export function TemplatePicker({ onSelect, onBack, challengeType }: TemplatePickerProps) {
-  const [selected, setSelected] = useState<string>('blaze');
-
-  const handleContinue = () => {
-    onSelect(selected);
-  };
+  const [selected, setSelected] = useState<string>('lumiere');
+  const selectedTemplate = TEMPLATES.find(t => t.id === selected)!;
 
   return (
     <motion.div
@@ -171,27 +185,38 @@ export function TemplatePicker({ onSelect, onBack, challengeType }: TemplatePick
         </p>
       </div>
 
-      {/* Template Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-8">
-        {TEMPLATES.map((template) => (
+      {/* Template Grid — 2 col on mobile, 5 col on desktop */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 mb-6">
+        {TEMPLATES.map((template, index) => (
           <TemplateThumbnail
             key={template.id}
             template={template}
             isSelected={selected === template.id}
             onClick={() => setSelected(template.id)}
+            index={index}
           />
         ))}
       </div>
 
-      {/* Selected preview text */}
-      <div className="text-center mb-6">
-        <p className="text-sm text-muted-foreground">
-          Selected:{' '}
-          <span className="font-semibold text-foreground">
-            {TEMPLATES.find(t => t.id === selected)?.name} — {TEMPLATES.find(t => t.id === selected)?.tagline}
-          </span>
-        </p>
-      </div>
+      {/* Selected preview strip */}
+      <motion.div
+        key={selected}
+        initial={{ opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="rounded-xl p-3 mb-6 flex items-center gap-3"
+        style={{ background: `${selectedTemplate.colors.primary}12`, border: `1px solid ${selectedTemplate.colors.primary}30` }}
+      >
+        <div
+          className="w-8 h-8 rounded-lg flex-shrink-0"
+          style={{ background: selectedTemplate.colors.heroGradient }}
+        />
+        <div>
+          <p className="text-sm font-semibold" style={{ color: selectedTemplate.colors.primary }}>
+            {selectedTemplate.name} — {selectedTemplate.tagline}
+          </p>
+          <p className="text-xs text-muted-foreground">This style will be applied to your brochure and PDF export</p>
+        </div>
+      </motion.div>
 
       {/* Actions */}
       <div className="flex items-center justify-between gap-4">
@@ -199,8 +224,12 @@ export function TemplatePicker({ onSelect, onBack, challengeType }: TemplatePick
           <ArrowLeft className="w-4 h-4" />
           Back
         </Button>
-        <Button onClick={handleContinue} className="gap-2 min-w-[200px]">
-          Continue with this style
+        <Button
+          onClick={() => onSelect(selected)}
+          className="gap-2 min-w-[220px] text-base py-5"
+          style={{ background: selectedTemplate.colors.primary, color: '#fff' }}
+        >
+          Continue with {selectedTemplate.name}
           <ArrowRight className="w-4 h-4" />
         </Button>
       </div>

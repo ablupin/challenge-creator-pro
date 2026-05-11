@@ -26,7 +26,7 @@ import {
 const Index = () => {
   const [step, setStep] = useState<WizardStep>('select-type');
   const [challengeType, setChallengeType] = useState<ChallengeType | null>(null);
-  const [selectedTemplate, setSelectedTemplate] = useState<string>('blaze');
+  const [selectedTemplate, setSelectedTemplate] = useState<string>('lumiere');
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [influencerIdForSave, setInfluencerIdForSave] = useState<string | null>(null);
